@@ -153,27 +153,50 @@ const AIStoryGenerator: React.FC<AIStoryGeneratorProps> = ({ onStoryGenerated, o
     // Enhanced prompt to ensure JSON response
     const enhancedPrompt = `${prompt}\n\nIMPORTANT: You must respond with ONLY the JSON object. Do not include any explanatory text before or after the JSON.`;
     
-    const response = await fetch('http://localhost:8002/predict', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      },
-      body: JSON.stringify({
-        user_id: userId,
-        context: context,
-        instruction: enhancedPrompt,
-        mode: mode
-      })
-    });
+    // Create abort controller for timeout (60 seconds)
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 60000);
+    
+    try {
+      const response = await fetch('http://localhost:8002/predict', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          user_id: userId,
+          context: context,
+          instruction: enhancedPrompt,
+          mode: mode
+        }),
+        signal: controller.signal
+      });
 
-    if (!response.ok) {
-      throw new Error(`AI API error: ${response.status} ${response.statusText}`);
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => 'No error details');
+        throw new Error(`AI API error: ${response.status} ${response.statusText}. Details: ${errorText}`);
+      }
+
+      const result = await response.json();
+      const content = result.content || result.response || '';
+      
+      if (!content) {
+        throw new Error('Empty response from AI service');
+      }
+      
+      return extractJSON(content);
+    } catch (err) {
+      clearTimeout(timeoutId);
+      
+      if (err instanceof Error && err.name === 'AbortError') {
+        throw new Error('AI request timed out after 60 seconds. The model might be busy. Please try again.');
+      }
+      
+      throw err;
     }
-
-    const result = await response.json();
-    const content = result.content || result.response || '';
-    return extractJSON(content);
   };
 
   // Helper function to train ZEGA
@@ -197,6 +220,237 @@ const AIStoryGenerator: React.FC<AIStoryGeneratorProps> = ({ onStoryGenerated, o
       console.log('✓ ZEGA trained successfully');
     } catch (err) {
       console.warn('Failed to train ZEGA:', err);
+    }
+  };
+
+  // Random story generation handler
+  const handleRandomGenerate = async () => {
+    setLoading(true);
+    setError('');
+    setProgressPercent(0);
+    setProgress('🎲 Generating random story concept...');
+
+    try {
+      const sceneConfig = sceneCountMap[storyLength];
+      
+      // Generate random story parameters
+      const randomConfig = generateRandomPrompt();
+      const randomPrompt = randomConfig.prompt;
+      const randomGenreIds = randomConfig.genreIds;
+      const randomLength = randomConfig.length;
+      
+      // Update UI with random selections
+      setUserPrompt(randomPrompt);
+      setSelectedGenres(randomGenreIds);
+      setStoryLength(randomLength);
+      
+      setProgressPercent(5);
+      setProgress(`🎲 Random story: ${randomLength} length with ${randomGenreIds.length} genres...`);
+      
+      const selectedGenreNames = randomGenreIds.map(id => genres.find(g => g.id === id)?.name).filter(Boolean).join(', ');
+      const sceneConfigForLength = sceneCountMap[randomLength];
+
+      // STEP 1: Generate Title & Description (15%)
+      setCurrentStep('Generating title and description');
+      setProgress('📖 Step 1/5: Creating story title and description...');
+      setProgressPercent(10);
+
+      const titlePrompt = `You are an expert story writer. Based on this user request, create a compelling story title and engaging 2-3 sentence description.
+
+USER REQUEST: ${randomPrompt}
+GENRES: ${selectedGenreNames || 'General Fiction'}
+
+Return ONLY valid JSON (no markdown, no code blocks):
+{
+  "title": "Compelling Story Title",
+  "description": "Engaging 2-3 sentence description that hooks the reader"
+}`;
+
+      const titleResponse = await callAI(titlePrompt, 'Story title and description generation', 'scene');
+      let titleResult;
+      try {
+        titleResult = JSON.parse(titleResponse);
+      } catch {
+        console.warn('Failed to parse title response, using fallback:', titleResponse);
+        const titleMatch = titleResponse.match(/["']?title["']?\s*:\s*["']([^"']+)["']/i);
+        const descMatch = titleResponse.match(/["']?description["']?\s*:\s*["']([^"']+)["']/i);
+        
+        if (titleMatch || descMatch) {
+          titleResult = {
+            title: titleMatch ? titleMatch[1] : 'Untitled Story',
+            description: descMatch ? descMatch[1] : 'An epic tale of adventure and discovery.'
+          };
+        } else {
+          throw new Error('Could not extract story title and description. Please try again.');
+        }
+      }
+      
+      await trainZEGA(`Title: ${titleResult.title}\nDescription: ${titleResult.description}`, 5.0);
+      setProgressPercent(15);
+
+      // STEP 2: Generate Characters (30%)
+      setCurrentStep('Creating characters');
+      setProgress('🎭 Step 2/5: Designing main characters...');
+      setProgressPercent(20);
+
+      const characterPrompt = `Based on this story, create 3-8 rich character profiles:
+
+STORY TITLE: ${titleResult.title}
+STORY DESCRIPTION: ${titleResult.description}
+GENRES: ${selectedGenreNames || 'General Fiction'}
+
+Return ONLY valid JSON (no markdown):
+{
+  "characters": [
+    {
+      "name": "Character Name",
+      "description": "Detailed background, personality traits, motivations (min 100 chars)",
+      "role": "Protagonist/Antagonist/Supporting/Mentor/Comic Relief",
+      "popularity": 7
+    }
+  ]
+}`;
+
+      let characterResponse;
+      let characterResult;
+      
+      try {
+        characterResponse = await callAI(characterPrompt, 'Character profile creation', 'scene');
+        characterResult = JSON.parse(characterResponse);
+      } catch (apiError) {
+        console.warn('Character generation API error, using fallback characters:', apiError);
+        // Use fallback characters instead of throwing error
+        characterResult = {
+          characters: [
+            { name: 'Hero', description: 'The main protagonist of the story who embarks on an epic journey filled with challenges and discoveries.', role: 'Protagonist', popularity: 9 },
+            { name: 'Mentor', description: 'A wise guide who provides crucial knowledge and support to help the hero succeed.', role: 'Mentor', popularity: 8 },
+            { name: 'Ally', description: 'A trusted companion who stands by the hero through thick and thin.', role: 'Supporting', popularity: 7 },
+            { name: 'Adversary', description: 'The main antagonist who opposes the hero at every turn with cunning and power.', role: 'Antagonist', popularity: 8 }
+          ]
+        };
+      }
+      
+      await trainZEGA(`Characters: ${JSON.stringify(characterResult.characters)}`, 5.0);
+      setProgressPercent(30);
+
+      // STEP 3: Generate Scenes (60%)
+      setCurrentStep('Writing scenes');
+      setProgress(`✍️ Step 3/5: Creating ${sceneConfigForLength.min}-${sceneConfigForLength.max} detailed scenes...`);
+      setProgressPercent(35);
+
+      const characterNames = characterResult.characters.map((c: Character) => c.name).join(', ');
+      const scenePrompt = `Write a complete story with ${sceneConfigForLength.min}-${sceneConfigForLength.max} detailed scenes:
+
+STORY TITLE: ${titleResult.title}
+STORY DESCRIPTION: ${titleResult.description}
+CHARACTERS: ${characterNames}
+GENRES: ${selectedGenreNames || 'General Fiction'}
+
+Create scenes with rich detail, dialogue, and action. Each scene should advance the plot.
+
+Return ONLY valid JSON (no markdown):
+{
+  "scenes": [
+    {
+      "event": "Scene Title",
+      "description": "Rich detailed description with dialogue and action (min 150 chars)",
+      "characters": ["Character1", "Character2"],
+      "order": 1
+    }
+  ]
+}`;
+
+      const sceneResponse = await callAI(scenePrompt, 'Scene generation', 'scene');
+      let sceneResult;
+      try {
+        sceneResult = JSON.parse(sceneResponse);
+      } catch {
+        console.warn('Failed to parse scene response, creating default scenes:', sceneResponse);
+        const firstCharacter = characterResult.characters[0].name;
+        sceneResult = {
+          scenes: [
+            { event: 'Opening', description: 'The story begins with an introduction to the main character.', characters: [firstCharacter], order: 1 },
+            { event: 'Rising Action', description: 'The protagonist faces their first challenge.', characters: [firstCharacter], order: 2 },
+            { event: 'Climax', description: 'The most intense moment of the story.', characters: characterNames.split(', '), order: 3 },
+            { event: 'Resolution', description: 'The story concludes with resolution.', characters: [firstCharacter], order: 4 }
+          ]
+        };
+      }
+      
+      if (!sceneResult.scenes || sceneResult.scenes.length === 0) {
+        throw new Error('Failed to generate scenes. Please try again.');
+      }
+      
+      await trainZEGA(`Scenes: ${JSON.stringify(sceneResult.scenes)}`, 10.0);
+      setProgressPercent(60);
+
+      // STEP 4: Generate Writers (75%)
+      setCurrentStep('Assigning writers');
+      setProgress('🖊️ Step 4/5: Creating writer credits...');
+      setProgressPercent(65);
+
+      const writerPrompt = `Suggest 1-3 fictional writer names suitable for this ${selectedGenreNames || 'fiction'} story titled "${titleResult.title}".
+
+Return ONLY valid JSON:
+{"writers": "Writer Name 1, Writer Name 2"}`;
+
+      const writerResponse = await callAI(writerPrompt, 'Writer name generation', 'scene');
+      let writerResult;
+      try {
+        writerResult = JSON.parse(writerResponse);
+      } catch {
+        writerResult = { writers: 'AI Story Generator' };
+      }
+      
+      await trainZEGA(`Writers: ${writerResult.writers}`, 2.0);
+      setProgressPercent(75);
+
+      // STEP 5: Finalize Story (100%)
+      setCurrentStep('Finalizing story');
+      setProgress('🎉 Step 5/5: Preparing final story structure...');
+      setProgressPercent(85);
+
+      const finalScenes = sceneResult.scenes.map((scene: any, index: number) => ({
+        id: `scene-${Date.now()}-${index}`,
+        event: scene.event || `Scene ${index + 1}`,
+        description: scene.description || 'Scene description',
+        characters: Array.isArray(scene.characters) ? scene.characters : [],
+        imageUrls: [],
+        videoUrls: [],
+        audioUrls: [],
+        order: index + 1
+      }));
+
+      const finalCharacters = characterResult.characters.map((char: any) => ({
+        name: char.name || 'Unknown',
+        description: char.description || 'A character in the story',
+        role: char.role || 'Supporting',
+        actorName: char.actorName || '',
+        popularity: char.popularity || 5
+      }));
+
+      setProgressPercent(100);
+      setProgress('✅ Story generation complete!');
+
+      const generatedStory: GeneratedStory = {
+        title: titleResult.title,
+        description: titleResult.description,
+        scenes: finalScenes,
+        characters: finalCharacters,
+        writers: writerResult.writers
+      };
+
+      setTimeout(() => {
+        onStoryGenerated(generatedStory);
+      }, 500);
+
+    } catch (err: any) {
+      console.error('Random story generation error:', err);
+      setError(err.message || 'Failed to generate random story. Please try again.');
+      setProgress('');
+      setProgressPercent(0);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -498,299 +752,6 @@ Return ONLY valid JSON:
     }
   };
 
-  // Handle random story generation
-  const handleRandomGenerate = async () => {
-    if (loading) return;
-    
-    const randomData = generateRandomPrompt();
-    
-    // Set the form data
-    setUserPrompt(randomData.prompt);
-    setStoryLength(randomData.length);
-    setSelectedGenres(randomData.genreIds);
-    
-    // Show user what was generated
-    setProgress(`🎲 Random story settings applied! Generating unique story...`);
-    setProgressPercent(0);
-    setError('');
-    
-    // Wait for state to update, then generate
-    setTimeout(async () => {
-      // Start generation with the random prompt
-      setLoading(true);
-      setError('');
-      setProgressPercent(0);
-      setProgress('Initializing AI Story Generator...');
-
-      try {
-        const sceneConfig = sceneCountMap[randomData.length];
-        const selectedGenreNames = randomData.genreIds.map(id => genres.find(g => g.id === id)?.name).filter(Boolean).join(', ');
-
-        // STEP 1: Generate Title & Description (15%)
-        setCurrentStep('Generating title and description');
-        setProgress('📖 Step 1/5: Creating story title and description...');
-        setProgressPercent(10);
-
-        const titlePrompt = `You are an expert story writer. Based on this user request, create a compelling story title and engaging 2-3 sentence description.
-
-USER REQUEST: ${randomData.prompt}
-GENRES: ${selectedGenreNames || 'General Fiction'}
-
-Return ONLY valid JSON (no markdown, no code blocks):
-{
-  "title": "Compelling Story Title",
-  "description": "Engaging 2-3 sentence description that hooks the reader"
-}`;
-
-        const titleResponse = await callAI(titlePrompt, 'Story title and description generation', 'scene');
-        let titleResult;
-        try {
-          titleResult = JSON.parse(titleResponse);
-        } catch {
-          console.warn('Failed to parse title response in random story, using fallback:', titleResponse);
-          const titleMatch = titleResponse.match(/["']?title["']?\s*:\s*["']([^"']+)["']/i);
-          const descMatch = titleResponse.match(/["']?description["']?\s*:\s*["']([^"']+)["']/i);
-          
-          if (titleMatch || descMatch) {
-            titleResult = {
-              title: titleMatch ? titleMatch[1] : 'Random Adventure',
-              description: descMatch ? descMatch[1] : 'A randomly generated tale of excitement and wonder.'
-            };
-          } else {
-            throw new Error('Could not extract story title and description. Please try again.');
-          }
-        }
-        
-        await trainZEGA(`Title: ${titleResult.title}\nDescription: ${titleResult.description}`, 5.0);
-        setProgressPercent(15);
-
-        // STEP 2: Generate Characters (30%)
-        setCurrentStep('Creating characters');
-        setProgress('🎭 Step 2/5: Designing main characters...');
-        setProgressPercent(20);
-
-        const characterPrompt = `Based on this story, create 3-8 rich character profiles:
-
-STORY TITLE: ${titleResult.title}
-STORY DESCRIPTION: ${titleResult.description}
-GENRES: ${selectedGenreNames || 'General Fiction'}
-
-Return ONLY valid JSON (no markdown):
-{
-  "characters": [
-    {
-      "name": "Character Name",
-      "description": "Detailed background, personality traits, motivations (min 100 chars)",
-      "role": "Protagonist/Antagonist/Supporting/Mentor/Comic Relief",
-      "popularity": 7
-    }
-  ]
-}`;
-
-        const characterResponse = await callAI(characterPrompt, 'Character profile creation', 'scene');
-        let characterResult;
-        try {
-          characterResult = JSON.parse(characterResponse);
-        } catch {
-          console.warn('Failed to parse character response in random story, creating defaults:', characterResponse);
-          characterResult = {
-            characters: [
-              { name: 'Hero', description: 'The main protagonist.', role: 'Protagonist', popularity: 9 },
-              { name: 'Ally', description: 'A trusted companion.', role: 'Supporting', popularity: 7 },
-              { name: 'Adversary', description: 'The primary antagonist.', role: 'Antagonist', popularity: 8 }
-            ]
-          };
-        }
-
-        const charText = characterResult.characters.map((c: { name: string; description: string }) => 
-          `${c.name}: ${c.description}`
-        ).join('\n');
-        await trainZEGA(charText, 5.0);
-        setProgressPercent(30);
-
-        // STEP 3: Generate Scenes (60%)
-        setCurrentStep('Writing scenes');
-        setProgress(`🎬 Step 3/5: Creating ${sceneConfig.min}-${sceneConfig.max} scenes...`);
-        setProgressPercent(35);
-
-        const scenePrompt = `Create ${sceneConfig.min}-${sceneConfig.max} detailed scenes for this story:
-
-TITLE: ${titleResult.title}
-DESCRIPTION: ${titleResult.description}
-CHARACTERS: ${characterResult.characters.map((c: { name: string }) => c.name).join(', ')}
-STORY LENGTH: ${randomData.length.toUpperCase()}
-GENRES: ${selectedGenreNames || 'General Fiction'}
-
-Create a complete narrative arc with beginning, rising action, climax, falling action, and resolution.
-
-Return ONLY valid JSON (no markdown):
-{
-  "scenes": [
-    {
-      "event": "Scene title (max 8 words)",
-      "description": "Detailed scene with dialogue, action, emotions, setting (minimum 150 characters)",
-      "characters": ["Character1", "Character2"],
-      "order": 0
-    }
-  ]
-}`;
-
-        const sceneResponse = await callAI(scenePrompt, 'Scene narrative generation', 'scene');
-        let sceneResult;
-        try {
-          sceneResult = JSON.parse(sceneResponse);
-        } catch {
-          console.warn('Failed to parse scene response in random story, creating basic scenes:', sceneResponse);
-          const numScenes = sceneConfig.min + Math.floor(Math.random() * (sceneConfig.max - sceneConfig.min + 1));
-          const scenes = [];
-          for (let i = 0; i < numScenes; i++) {
-            scenes.push({
-              event: `Scene ${i + 1}`,
-              description: `Scene ${i + 1} of the random story continues the narrative.`,
-              characters: characterResult.characters.slice(0, 2).map((c: { name: string }) => c.name),
-              order: i
-            });
-          }
-          sceneResult = { scenes };
-        }
-
-        const sceneText = sceneResult.scenes.map((s: { event: string; description: string }) => 
-          `${s.event}: ${s.description}`
-        ).join('\n\n');
-        await trainZEGA(sceneText, 5.0);
-        setProgressPercent(60);
-
-        // STEP 4: Generate Writers (75%)
-        setCurrentStep('Adding writer credits');
-        setProgress('✍️ Step 4/5: Adding writer credits...');
-        setProgressPercent(65);
-
-        const writerPrompt = `Suggest 1-2 writer names (real or fictional) that would be appropriate for this story:
-
-TITLE: ${titleResult.title}
-GENRES: ${selectedGenreNames || 'General Fiction'}
-
-Return ONLY valid JSON:
-{
-  "writers": "Writer Name or Writer1 & Writer2"
-}`;
-
-        const writerResponse = await callAI(writerPrompt, 'Writer credits suggestion', 'continuation');
-        let writerResult;
-        try {
-          writerResult = JSON.parse(writerResponse);
-        } catch {
-          console.warn('Failed to parse writer response in random story, using fallback:', writerResponse);
-          // Fallback: extract writer name from text or use default
-          const writerMatch = writerResponse.match(/["']?writers["']?\s*:\s*["']([^"']+)["']/i);
-          if (writerMatch) {
-            writerResult = { writers: writerMatch[1] };
-          } else {
-            // Generate writer based on genre
-            const genreWriters: { [key: string]: string } = {
-              'sci-fi': 'Isaac Asimov & Arthur C. Clarke',
-              'fantasy': 'J.R.R. Tolkien & C.S. Lewis',
-              'horror': 'Stephen King & Edgar Allan Poe',
-              'romance': 'Jane Austen & Nicholas Sparks',
-              'mystery': 'Agatha Christie & Arthur Conan Doyle',
-              'thriller': 'James Patterson & Lee Child',
-              'adventure': 'Jules Verne & Jack London'
-            };
-            const firstGenre = selectedGenreNames.toLowerCase().split(',')[0].trim();
-            writerResult = { 
-              writers: genreWriters[firstGenre] || 'AI Generated Writer'
-            };
-          }
-        }
-
-        await trainZEGA(`Writers for ${selectedGenreNames || 'story'}: ${writerResult.writers}`, 5.0);
-        setProgressPercent(75);
-
-        // STEP 5: Process and Finalize (100%)
-        setCurrentStep('Finalizing story');
-        setProgress('🎨 Step 5/5: Processing and finalizing...');
-        setProgressPercent(80);
-
-        // Process scenes
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const processedScenes: TimelineEntry[] = sceneResult.scenes.map((scene: any, index: number) => ({
-          id: `scene-${Date.now()}-${index}`,
-          event: scene.event || `Scene ${index + 1}`,
-          description: scene.description || '',
-          characters: Array.isArray(scene.characters) ? scene.characters : [],
-          imageUrls: [],
-          videoUrls: [],
-          audioUrls: [],
-          order: index
-        }));
-
-        setProgressPercent(85);
-
-        // Process characters
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const processedCharacters: Character[] = characterResult.characters.map((char: any) => ({
-          name: char.name || 'Unknown',
-          description: char.description || '',
-          role: char.role || 'Supporting Character',
-          actorName: '',
-          popularity: Math.max(1, Math.min(10, char.popularity || 5)),
-          imageUrls: []
-        }));
-
-        setProgressPercent(90);
-
-        // Ensure all scene characters exist
-        const allSceneCharacters = new Set<string>();
-        processedScenes.forEach(scene => {
-          scene.characters.forEach(charName => allSceneCharacters.add(charName));
-        });
-
-        const existingCharNames = new Set(processedCharacters.map(c => c.name.toLowerCase()));
-        allSceneCharacters.forEach(charName => {
-          if (!existingCharNames.has(charName.toLowerCase())) {
-            processedCharacters.push({
-              name: charName,
-              description: 'Character from scene',
-              role: 'Supporting Character',
-              actorName: '',
-              popularity: 5,
-              imageUrls: []
-            });
-          }
-        });
-
-        setProgressPercent(95);
-
-        const generatedStory: GeneratedStory = {
-          title: titleResult.title,
-          description: titleResult.description,
-          scenes: processedScenes,
-          characters: processedCharacters,
-          writers: writerResult.writers || 'AI Generated'
-        };
-
-        // Final training with complete story
-        const finalTrainingText = `Story: ${generatedStory.title}\n${generatedStory.description}\nScenes: ${generatedStory.scenes.length}\nCharacters: ${generatedStory.characters.map(c => c.name).join(', ')}`;
-        await trainZEGA(finalTrainingText, 5.0);
-
-        setProgressPercent(100);
-        setProgress('🎉 Random story generated successfully!');
-        
-        setTimeout(() => {
-          onStoryGenerated(generatedStory);
-        }, 800);
-
-      } catch (err) {
-        console.error('Random story generation error:', err);
-        setError(err instanceof Error ? err.message : 'Failed to generate random story. Please try again.');
-        setProgress('');
-        setProgressPercent(0);
-      } finally {
-        setLoading(false);
-      }
-    }, 500);
-  };
-
   return (
     <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 overflow-y-auto" style={{ zIndex: 9999 }}>
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl my-8 animate-fadeIn relative">
@@ -1058,6 +1019,11 @@ Return ONLY valid JSON:
                 <p className="text-xs text-purple-700 mt-2 italic">
                   💡 Story will be saved as draft (unpublished) - you can edit and publish later!
                 </p>
+                {!isUpdateMode && (
+                  <p className="text-xs text-orange-600 mt-1 font-medium">
+                    🎲 Try "Random Story" for instant creative inspiration with unique genres, length, and themes!
+                  </p>
+                )}
               </div>
             </div>
           </div>

@@ -18,7 +18,7 @@ const Settings = lazy(() => import('./pages/Settings/Settings.tsx'));
 const ContactSupport = lazy(() => import('./pages/Support/ContactSupport.tsx'));
 const Subscription = lazy(() => import('./pages/Subscription/Subscription.tsx'));
 const Cart = lazy(() => import('./pages/Cart/Cart.tsx'));
-const AIStoryGenerator = lazy(() => import('./components/AIStoryGenerator.tsx'));
+import AIStoryGenerator from './components/AIStoryGeneratorNew';
 
 const API_BASE = '/api';
 
@@ -327,29 +327,37 @@ const App = () => {
   const handleAIStoryGenerated = useCallback((generatedStory: {
     title: string;
     description: string;
-    scenes: any[];
-    characters: any[];
+    scenes: Array<{
+      id: string;
+      event: string;
+      description: string;
+      characters: string[];
+      imageUrls: string[];
+      videoUrls?: string[];
+      audioUrls?: string[];
+      order: number;
+    }>;
+    characters: Character[];
     writers?: string;
   }) => {
-    // Populate form with AI-generated story
     setFormData({
       title: generatedStory.title,
-      content: generatedStory.description, // Use description as initial content
+      content: generatedStory.description,
       description: generatedStory.description,
       timelineJson: JSON.stringify(generatedStory.scenes),
       imageUrls: [],
       characters: generatedStory.characters,
-      isPublished: false, // Always start as draft
+      isPublished: false,
       writers: generatedStory.writers || 'AI Generated',
       genreIds: [],
       showSceneTimeline: true
     });
-    
-    // Close AI generator and open story form
     setShowAIGenerator(false);
     setShowForm(true);
     setEditingStory(null);
   }, []);
+
+
 
   const toggleLike = useCallback(async (storyId: string, isLiked: boolean) => {
     if (!user) return;
@@ -642,7 +650,7 @@ const App = () => {
                 onViewChange={(newView) => {
                   setView(newView);
                   setShowForm(false);
-                  setShowAIGenerator(false); // Hide AI generator when changing view
+                  setShowAIGenerator(false);
                 }}
                 allStoriesCount={stories.length}
                 myStoriesCount={myStories.length}
@@ -783,17 +791,14 @@ const App = () => {
         </div>
       </div>
       
-      {/* AI Story Generator Modal - Rendered at root level for proper z-index layering */}
       {showAIGenerator && (
-        <Suspense fallback={<LoadingSpinner isLoading={true} />}>
-          <AIStoryGenerator
-            onStoryGenerated={handleAIStoryGenerated}
-            onCancel={() => setShowAIGenerator(false)}
-            genres={genres}
-            existingStoryTitle={editingStory?.title}
-            existingStoryId={editingStory?.id}
-          />
-        </Suspense>
+        <AIStoryGenerator
+          onStoryGenerated={handleAIStoryGenerated}
+          onCancel={() => setShowAIGenerator(false)}
+          genres={genres}
+          existingStoryTitle={editingStory?.title}
+          existingStoryId={editingStory?.id}
+        />
       )}
     </div>
   );

@@ -91,7 +91,7 @@ const StoryForm = ({
   const [pendingNavigation, setPendingNavigation] = useState<(() => void) | null>(null);
   const [showEmptySceneDialog, setShowEmptySceneDialog] = useState(false);
   const [pendingSubmit, setPendingSubmit] = useState<React.FormEvent | null>(null);
-  const { getSuggestion, sendFeedback } = useAI();
+  const { sendFeedback } = useAI();
   const [aiLoading, setAiLoading] = useState<string | null>(null);
   
   // AI Suggestion States
@@ -270,7 +270,7 @@ const StoryForm = ({
               });
               
               if (addedCount > 0) {
-                setFormData(prev => ({ ...prev, genreIds: Array.from(newGenreIds) }));
+                setFormData({ ...formData, genreIds: Array.from(newGenreIds) });
               }
             }
           } catch (e) {
@@ -278,10 +278,10 @@ const StoryForm = ({
             // Fallback for single string
             const genre = genres.find(g => g.name.toLowerCase() === content.replace(/^["']|["']$/g, '').toLowerCase());
             if (genre) {
-              setFormData(prev => ({ 
-                ...prev, 
-                genreIds: prev.genreIds?.includes(genre.id) ? prev.genreIds : [...(prev.genreIds || []), genre.id] 
-              }));
+              setFormData({ 
+                ...formData, 
+                genreIds: formData.genreIds?.includes(genre.id) ? formData.genreIds : [...(formData.genreIds || []), genre.id] 
+              });
             }
           }
         }
@@ -330,7 +330,7 @@ const StoryForm = ({
 
       if (response.ok) {
         const data = await response.json();
-        let suggestion = data.content.trim().replace(/^["']|["']$/g, '');
+        const suggestion = data.content.trim().replace(/^["']|["']$/g, '');
         // Show suggestion with append/replace options instead of auto-applying
         setCharacterSuggestion({ field, content: suggestion, index });
       }
@@ -342,7 +342,7 @@ const StoryForm = ({
   };
 
   const applyTitleSuggestion = (title: string) => {
-    setFormData(prevFormData => ({ ...prevFormData, title }));
+    setFormData({ ...formData, title });
     setShowTitleSuggestions(false);
     // Train ZEGA with accepted title
     sendFeedback(
@@ -353,12 +353,12 @@ const StoryForm = ({
   };
 
   const applyDescriptionSuggestion = (append: boolean) => {
-    setFormData(prevFormData => ({
-      ...prevFormData,
+    setFormData({
+      ...formData,
       description: append 
-        ? (prevFormData.description + ' ' + descriptionSuggestion).trim()
+        ? (formData.description + ' ' + descriptionSuggestion).trim()
         : descriptionSuggestion
-    }));
+    });
     setShowDescriptionSuggestion(false);
     // Train ZEGA with accepted description
     sendFeedback(
@@ -472,7 +472,8 @@ Provide a popularity score (1-10) and brief explanation. Format: {"score": X, "e
   const handleWritersAISuggestion = async () => {
     setAiLoading('writers');
     try {
-      const context = `Story Title: ${formData.title}\nDescription: ${formData.description}\nGenre: ${formData.genre}`;
+      const genreNames = formData.genreIds?.map(id => genres.find(g => g.id === id)?.name).filter(Boolean).join(', ') || 'General';
+      const context = `Story Title: ${formData.title}\nDescription: ${formData.description}\nGenre: ${genreNames}`;
       const instruction = "Suggest appropriate writers or screenwriters for this type of story. Return a comma-separated list of writer names.";
 
       const response = await fetch('http://localhost:8002/predict', {
@@ -488,7 +489,7 @@ Provide a popularity score (1-10) and brief explanation. Format: {"score": X, "e
 
       if (response.ok) {
         const data = await response.json();
-        let suggestion = data.content.trim().replace(/^["']|["']$/g, '');
+        const suggestion = data.content.trim().replace(/^["']|["']$/g, '');
         setWritersSuggestion(suggestion);
       }
     } catch (error) {
@@ -499,17 +500,17 @@ Provide a popularity score (1-10) and brief explanation. Format: {"score": X, "e
   };
 
   const applyWritersSuggestion = (append: boolean) => {
-    setFormData(prevFormData => {
-      const current = prevFormData.writers || '';
-      const separator = current && append ? ', ' : '';
-      return {
-        ...prevFormData,
-        writers: append ? (current + separator + writersSuggestion).trim() : writersSuggestion
-      };
+    const current = formData.writers || '';
+    const separator = current && append ? ', ' : '';
+    const newWriters = append ? (current + separator + writersSuggestion).trim() : writersSuggestion;
+    setFormData({
+      ...formData,
+      writers: newWriters
     });
     // Train ZEGA with accepted writers suggestion
+    const genreNames = formData.genreIds?.map(id => genres.find(g => g.id === id)?.name).filter(Boolean).join(', ') || 'General';
     sendFeedback(
-      `Writers suggestion for: ${formData.title} (${formData.genre})`,
+      `Writers suggestion for: ${formData.title} (${genreNames})`,
       writersSuggestion,
       5
     );
@@ -518,15 +519,15 @@ Provide a popularity score (1-10) and brief explanation. Format: {"score": X, "e
 
   const handleTimelineChange = (newTimeline: TimelineEntry[]) => {
     setTimeline(newTimeline);
-    setFormData(prevFormData => ({ ...prevFormData, timelineJson: JSON.stringify(newTimeline) }));
+    setFormData({ ...formData, timelineJson: JSON.stringify(newTimeline) });
     setHasUnsavedChanges(true);
   };
 
   const handleAddCharacterFromTimeline = async (character: Character) => {
-    setFormData(prevFormData => ({
-      ...prevFormData,
-      characters: [...prevFormData.characters, character]
-    }));
+    setFormData({
+      ...formData,
+      characters: [...formData.characters, character]
+    });
     const newCharacters = [...formData.characters, character];
 
     // If editing an existing story, save the character immediately
@@ -578,10 +579,10 @@ Provide a popularity score (1-10) and brief explanation. Format: {"score": X, "e
   };
 
   const removeCharacter = (index: number) => {
-    setFormData(prevFormData => ({
-      ...prevFormData,
-      characters: prevFormData.characters.filter((_, i) => i !== index)
-    }));
+    setFormData({
+      ...formData,
+      characters: formData.characters.filter((_: Character, i: number) => i !== index)
+    });
   };
 
   const copyCharacter = (character: Character) => {
@@ -700,7 +701,7 @@ Provide a popularity score (1-10) and brief explanation. Format: {"score": X, "e
 
       if (response.ok) {
         const urls: string[] = await response.json();
-        setFormData(prevFormData => ({ ...prevFormData, imageUrls: [...prevFormData.imageUrls, ...urls] }));
+        setFormData({ ...formData, imageUrls: [...formData.imageUrls, ...urls] });
       }
     } catch (err) {
       console.error('Image upload failed', err);
@@ -1355,13 +1356,11 @@ Provide a popularity score (1-10) and brief explanation. Format: {"score": X, "e
                           type="checkbox"
                           checked={isSelected}
                           onChange={(e) => {
-                            setFormData(prevFormData => {
-                              const currentGenres = prevFormData.genreIds || [];
-                              const newGenres = e.target.checked
-                                ? [...currentGenres, genre.id]
-                                : currentGenres.filter(id => id !== genre.id);
-                              return { ...prevFormData, genreIds: newGenres };
-                            });
+                            const currentGenres = formData.genreIds || [];
+                            const newGenres = e.target.checked
+                              ? [...currentGenres, genre.id]
+                              : currentGenres.filter((id: number) => id !== genre.id);
+                            setFormData({ ...formData, genreIds: newGenres });
                           }}
                           className="w-4 h-4 rounded border-blue-300 text-blue-600 focus:ring-2 focus:ring-blue-500"
                         />
@@ -2599,7 +2598,7 @@ Provide a popularity score (1-10) and brief explanation. Format: {"score": X, "e
                 onChange={(e) => {
                   const newValue = e.target.checked;
                   console.log('Publish status changed:', newValue);
-                  setFormData(prevFormData => ({ ...prevFormData, isPublished: newValue }));
+                  setFormData({ ...formData, isPublished: newValue });
                   setHasUnsavedChanges(true);
                 }}
                 className="sr-only peer"
@@ -2626,7 +2625,7 @@ Provide a popularity score (1-10) and brief explanation. Format: {"score": X, "e
                 onChange={(e) => {
                   const newValue = e.target.checked;
                   console.log('Show timeline toggle changed:', newValue);
-                  setFormData(prevFormData => ({ ...prevFormData, showSceneTimeline: newValue }));
+                  setFormData({ ...formData, showSceneTimeline: newValue });
                   setHasUnsavedChanges(true);
                 }}
                 className="sr-only peer"

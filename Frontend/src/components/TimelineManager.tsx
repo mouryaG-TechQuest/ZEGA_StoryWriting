@@ -39,10 +39,10 @@ interface TimelineManagerProps {
 }
 
 const TimelineManager = ({ timeline, onChange, availableCharacters, onAddCharacter, onUpdateCharacter, onDeleteCharacter, storyTitle = '', storyDescription = '', storyGenre = '' }: TimelineManagerProps) => {
-  const { getSuggestion, generateScene, loading: aiLoading, sendFeedback } = useAI();
+  const { getSuggestion, generateScene, sendFeedback } = useAI();
   const [realTimeSuggestion, setRealTimeSuggestion] = useState<string | null>(null);
   const [isTyping, setIsTyping] = useState(false);
-  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const typingTimeoutRef = useRef<number | null>(null);
 
   const [expandedEntries, setExpandedEntries] = useState<Set<string>>(new Set());
   const [showCharacters, setShowCharacters] = useState(false);
