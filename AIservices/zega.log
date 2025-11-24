@@ -1,0 +1,8 @@
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "C:\Users\hp\Desktop\Working\moreoptimized\StoryWritingProject - MainCopyUsingCluadeSonnet4\AIservices\zega\api.py", line 11, in <module>
+    from core.model import ZegaModel
+  File "C:\Users\hp\Desktop\Working\moreoptimized\StoryWritingProject - MainCopyUsingCluadeSonnet4\AIservices\zega\core\model.py", line 7, in <module>
+    import google.generativeai as genai
+ModuleNotFoundError: No module named 'google.generativeai'

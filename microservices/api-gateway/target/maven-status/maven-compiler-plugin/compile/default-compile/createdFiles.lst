@@ -1,0 +1,2 @@
+com\storyapp\gateway\ApiGatewayApplication.class
+com\storyapp\gateway\config\CorsConfig.class
