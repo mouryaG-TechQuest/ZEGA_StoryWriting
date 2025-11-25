@@ -1,0 +1,62 @@
+# Python virtual environment
+AIservices/venv/
+AIservices/.venv/
+venv/
+.venv/
+env/
+*.pyc
+__pycache__/
+*.pyo
+*.pyd
+
+# Java build artifacts
+**/target/
+*.jar
+*.war
+*.ear
+*.class
+.mvn/
+mvnw
+mvnw.cmd
+
+# Node modules
+**/node_modules/
+Frontend/node_modules/
+Frontend/dist/
+Frontend/build/
+
+# IDE files
+.vscode/
+.idea/
+*.iml
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Database files
+*.sqlite3
+*.db
+
+# ZEGA store (large binary files)
+AIservices/zega_store/**/*.bin
+AIservices/zega_store_backup*/
+
+# Uploads
+microservices/story-service/uploads/
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
