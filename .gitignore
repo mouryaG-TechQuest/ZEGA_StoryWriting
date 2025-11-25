@@ -9,6 +9,13 @@ __pycache__/
 *.pyo
 *.pyd
 
+# Environment variables with secrets
+.env
+.env.local
+.env.*.local
+AIservices/.env
+**/.env
+
 # Java build artifacts
 **/target/
 *.jar
