@@ -2,6 +2,7 @@ C:\Users\hp\Desktop\Working\moreoptimized\StoryWritingProject - MainCopyUsingClu
 C:\Users\hp\Desktop\Working\moreoptimized\StoryWritingProject - MainCopyUsingCluadeSonnet4\microservices\story-service\src\main\java\com\storyapp\story\dto\CharacterRequest.java
 C:\Users\hp\Desktop\Working\moreoptimized\StoryWritingProject - MainCopyUsingCluadeSonnet4\microservices\story-service\src\main\java\com\storyapp\story\repository\CommentRepository.java
 C:\Users\hp\Desktop\Working\moreoptimized\StoryWritingProject - MainCopyUsingCluadeSonnet4\microservices\story-service\src\main\java\com\storyapp\story\repository\StoryViewRepository.java
+C:\Users\hp\Desktop\Working\moreoptimized\StoryWritingProject - MainCopyUsingCluadeSonnet4\microservices\story-service\src\main\java\com\storyapp\story\controller\TrainingHistoryController.java
 C:\Users\hp\Desktop\Working\moreoptimized\StoryWritingProject - MainCopyUsingCluadeSonnet4\microservices\story-service\src\main\java\com\storyapp\story\service\GenreInitializer.java
 C:\Users\hp\Desktop\Working\moreoptimized\StoryWritingProject - MainCopyUsingCluadeSonnet4\microservices\story-service\src\main\java\com\storyapp\story\model\Genre.java
 C:\Users\hp\Desktop\Working\moreoptimized\StoryWritingProject - MainCopyUsingCluadeSonnet4\microservices\story-service\src\main\java\com\storyapp\story\security\JwtAuthenticationFilter.java
@@ -9,15 +10,19 @@ C:\Users\hp\Desktop\Working\moreoptimized\StoryWritingProject - MainCopyUsingClu
 C:\Users\hp\Desktop\Working\moreoptimized\StoryWritingProject - MainCopyUsingCluadeSonnet4\microservices\story-service\src\main\java\com\storyapp\story\model\Character.java
 C:\Users\hp\Desktop\Working\moreoptimized\StoryWritingProject - MainCopyUsingCluadeSonnet4\microservices\story-service\src\main\java\com\storyapp\story\model\StoryImage.java
 C:\Users\hp\Desktop\Working\moreoptimized\StoryWritingProject - MainCopyUsingCluadeSonnet4\microservices\story-service\src\main\java\com\storyapp\story\client\UserServiceClient.java
+C:\Users\hp\Desktop\Working\moreoptimized\StoryWritingProject - MainCopyUsingCluadeSonnet4\microservices\story-service\src\main\java\com\storyapp\story\repository\TrainingHistoryRepository.java
 C:\Users\hp\Desktop\Working\moreoptimized\StoryWritingProject - MainCopyUsingCluadeSonnet4\microservices\story-service\src\main\java\com\storyapp\story\exception\ErrorResponse.java
 C:\Users\hp\Desktop\Working\moreoptimized\StoryWritingProject - MainCopyUsingCluadeSonnet4\microservices\story-service\src\main\java\com\storyapp\story\dto\GenreResponse.java
 C:\Users\hp\Desktop\Working\moreoptimized\StoryWritingProject - MainCopyUsingCluadeSonnet4\microservices\story-service\src\main\java\com\storyapp\story\dto\StoryResponse.java
+C:\Users\hp\Desktop\Working\moreoptimized\StoryWritingProject - MainCopyUsingCluadeSonnet4\microservices\story-service\src\main\java\com\storyapp\story\model\TrainingHistory.java
 C:\Users\hp\Desktop\Working\moreoptimized\StoryWritingProject - MainCopyUsingCluadeSonnet4\microservices\story-service\src\main\java\com\storyapp\story\dto\TimelineEntryDto.java
+C:\Users\hp\Desktop\Working\moreoptimized\StoryWritingProject - MainCopyUsingCluadeSonnet4\microservices\story-service\src\main\java\com\storyapp\story\service\TrainingHistoryService.java
 C:\Users\hp\Desktop\Working\moreoptimized\StoryWritingProject - MainCopyUsingCluadeSonnet4\microservices\story-service\src\main\java\com\storyapp\story\model\Like.java
 C:\Users\hp\Desktop\Working\moreoptimized\StoryWritingProject - MainCopyUsingCluadeSonnet4\microservices\story-service\src\main\java\com\storyapp\story\model\Story.java
 C:\Users\hp\Desktop\Working\moreoptimized\StoryWritingProject - MainCopyUsingCluadeSonnet4\microservices\story-service\src\main\java\com\storyapp\story\repository\StoryRepository.java
 C:\Users\hp\Desktop\Working\moreoptimized\StoryWritingProject - MainCopyUsingCluadeSonnet4\microservices\story-service\src\main\java\com\storyapp\story\service\ImageStorageService.java
 C:\Users\hp\Desktop\Working\moreoptimized\StoryWritingProject - MainCopyUsingCluadeSonnet4\microservices\story-service\src\main\java\com\storyapp\story\exception\GlobalExceptionHandler.java
+C:\Users\hp\Desktop\Working\moreoptimized\StoryWritingProject - MainCopyUsingCluadeSonnet4\microservices\story-service\src\main\java\com\storyapp\story\dto\TrainingHistoryRequest.java
 C:\Users\hp\Desktop\Working\moreoptimized\StoryWritingProject - MainCopyUsingCluadeSonnet4\microservices\story-service\src\main\java\com\storyapp\story\repository\StoryGenreRepository.java
 C:\Users\hp\Desktop\Working\moreoptimized\StoryWritingProject - MainCopyUsingCluadeSonnet4\microservices\story-service\src\main\java\com\storyapp\story\model\Favorite.java
 C:\Users\hp\Desktop\Working\moreoptimized\StoryWritingProject - MainCopyUsingCluadeSonnet4\microservices\story-service\src\main\java\com\storyapp\story\repository\FavoriteRepository.java

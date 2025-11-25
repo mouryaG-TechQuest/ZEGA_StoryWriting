@@ -4,6 +4,7 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import Home from '../pages/Home/Home';
 import Login from '../pages/Login/Login';
 import Dashboard from '../pages/Dashboard/Dashboard';
+import Settings from '../pages/Settings/Settings';
 import Loader from '../components/common/Loader';
 
 export const AppRoutes = () => {
@@ -14,6 +15,7 @@ export const AppRoutes = () => {
           <Route path="/" element={<Home />} />
           <Route path="/login" element={<Login />} />
           <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/settings" element={<Settings />} />
         </Routes>
       </Suspense>
     </Router>

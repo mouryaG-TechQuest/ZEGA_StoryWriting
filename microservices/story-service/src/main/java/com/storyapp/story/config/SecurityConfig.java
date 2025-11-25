@@ -34,6 +34,8 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.POST, "/api/stories/*/view").permitAll()  // Allow view tracking
                 .requestMatchers(HttpMethod.POST, "/api/stories/*/watch-time").permitAll()  // Allow watch time tracking
                 .requestMatchers(HttpMethod.POST, "/api/stories/upload-images").authenticated()  // Require auth for uploads
+                .requestMatchers("/api/training-history/**").permitAll()  // Public access to training history endpoints
+                .requestMatchers(HttpMethod.POST, "/api/training-history").permitAll()  // Allow ZEGA to save training history
                 .anyRequest().authenticated()
             )
             .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);

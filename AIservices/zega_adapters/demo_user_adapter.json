@@ -1,0 +1,22 @@
+{
+  "user_id": "demo_user",
+  "version": "1.0",
+  "training_steps": 10,
+  "style_vectors": {},
+  "preferences": {
+    "fantasy": 4,
+    "sci_fi": 6
+  },
+  "quality_scores": [
+    8.8,
+    8.8,
+    8.8,
+    8.3,
+    8.8,
+    8.8,
+    8.3,
+    8.8,
+    8.8,
+    8.8
+  ]
+}

@@ -6,6 +6,8 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional
 import google.generativeai as genai
 from .memory import ZegaMemory
+from .ollama_teacher import OllamaTeacher
+from .ollama_teacher import OllamaTeacher
 
 class ZegaModel:
     def __init__(self, memory: ZegaMemory, checkpoint_dir: str = "zega_checkpoints"):
@@ -51,21 +53,67 @@ class ZegaModel:
             self.teachers.append({
                 "name": "gemini-2.0-flash",
                 "model": genai.GenerativeModel('gemini-2.0-flash'),
-                "role": "primary"
+                "role": "judge",
+                "type": "gemini"
             })
         else:
             print("[WARN] GOOGLE_API_KEY not found. AI will not function.")
+        
+        # Initialize Ollama models (Local)
+        self._init_ollama_teachers()
+    
+    def _init_ollama_teachers(self):
+        """Initialize Ollama local models as teachers."""
+        ollama_models = [
+            {"name": "llama3.1:8b-instruct-q4_K_M", "role": "primary_creative"},
+            {"name": "mistral:7b-instruct-v0.3-q4_K_M", "role": "structured"},
+            {"name": "phi3.5:3.8b-mini-instruct-q4_K_M", "role": "fast_assistant"},
+        ]
+        
+        for model_config in ollama_models:
+            try:
+                teacher = OllamaTeacher(model_config["name"])
+                # Check availability synchronously
+                import httpx
+                try:
+                    response = httpx.get("http://localhost:11434/api/tags", timeout=2.0)
+                    if response.status_code == 200:
+                        models = response.json().get("models", [])
+                        if any(m.get("name", "").startswith(model_config["name"]) for m in models):
+                            self.teachers.append({
+                                "name": model_config["name"],
+                                "model": teacher,
+                                "role": model_config["role"],
+                                "type": "ollama"
+                            })
+                            print(f"[INFO] ✅ Loaded Ollama model: {model_config['name']}")
+                except:
+                    pass
+            except Exception as e:
+                print(f"[DEBUG] Ollama model {model_config['name']} not available")
+        
+        if not any(t["type"] == "ollama" for t in self.teachers):
+            print("[INFO] 💡 No Ollama models found. Install with: ollama pull llama3.1:8b-instruct-q4_K_M")
 
     async def _generate_candidate(self, teacher: Dict, system_prompt: str, user_prompt: str) -> Dict[str, str]:
         """Generates a response from a single teacher."""
         try:
-            full_prompt = f"{system_prompt}\n\n{user_prompt}"
-            response = await asyncio.to_thread(
-                teacher["model"].generate_content,
-                full_prompt
-            )
-            content = response.text if hasattr(response, 'text') else str(response)
-            return {"model": teacher["name"], "content": content}
+            if teacher.get("type") == "ollama":
+                # Ollama model
+                content = await teacher["model"].generate(
+                    prompt=user_prompt,
+                    system=system_prompt
+                )
+                return {"model": teacher["name"], "content": content, "type": "ollama"}
+            else:
+                # Gemini model (default)
+                full_prompt = f"{system_prompt}\n\n{user_prompt}"
+                response = await asyncio.to_thread(
+                    teacher["model"].generate_content,
+                    full_prompt
+                )
+                content = response.text if hasattr(response, 'text') else str(response)
+                return {"model": teacher["name"], "content": content, "type": "gemini"}
         except Exception as e:
             print(f"Error from {teacher['name']}: {e}")
             return {"model": teacher["name"], "content": None, "error": str(e)}
@@ -189,8 +237,20 @@ class ZegaModel:
                 return "I'm having trouble generating content right now. Please try again."
 
             # 4. Selection / Judging
-            # Use first valid result (primary model since we only have one)
-            best_result = valid_results[0]["content"]
+            # Prefer Ollama models (local, fast), fallback to Gemini
+            ollama_results = [r for r in valid_results if r.get("type") == "ollama"]
+            gemini_results = [r for r in valid_results if r.get("type") == "gemini"]
+            
+            if ollama_results:
+                # Use first Ollama result (prefer llama3.1 for creative)
+                best_result = ollama_results[0]["content"]
+                print(f"[INFO] Using {ollama_results[0]['model']} (local)")
+            elif gemini_results:
+                # Fallback to Gemini
+                best_result = gemini_results[0]["content"]
+                print(f"[INFO] Using {gemini_results[0]['model']} (API fallback)")
+            else:
+                best_result = valid_results[0]["content"]
             
             # Save checkpoint periodically
             if self.training_metrics["total_predictions"] % 10 == 0:

@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
-import { User, Bell, Lock, Eye, ArrowLeft, Save, Shield, Mail, Smartphone, Globe } from 'lucide-react';
+import { User, Bell, Lock, Eye, ArrowLeft, Save, Shield, Mail, Smartphone, Globe, Brain } from 'lucide-react';
+import AutoTrainModel from '../../components/AutoTrainModel';
+import TrainingHistoryComponent from '../../components/TrainingHistory';
 
 interface SettingsPageProps {
   onNavigate?: (page: 'home') => void;
@@ -27,9 +29,13 @@ export default function SettingsPage({ onNavigate }: SettingsPageProps) {
     phoneNumber: ''
   });
 
+  const [userId, setUserId] = useState('');
+
   useEffect(() => {
     // Load user data from local storage or API
     const storedUsername = localStorage.getItem('username') || '';
+    const storedUserId = localStorage.getItem('userId') || storedUsername || 'demo_user';
+    setUserId(storedUserId);
     // In a real app, fetch this from API
     setProfileData(prev => ({ ...prev, username: storedUsername }));
     
@@ -276,6 +282,32 @@ export default function SettingsPage({ onNavigate }: SettingsPageProps) {
           </div>
         );
 
+      case 'aitraining':
+        return (
+          <div className="space-y-6 pt-8">
+            <div className="mb-8">
+              <h2 className="text-3xl font-bold text-gray-800 mb-3">Generate Stories with AI</h2>
+              <p className="text-gray-600">
+                Train your personal AI model with custom stories. Generate training data automatically 
+                without creating stories in your database.
+              </p>
+            </div>
+            <AutoTrainModel userId={userId} />
+          </div>
+        );
+
+      case 'traininghistory':
+        return (
+          <div className="space-y-6">
+            <h2 className="text-2xl font-bold text-gray-800 mb-6">Training History</h2>
+            <p className="text-gray-600 mb-6">
+              View your complete training session history, including quality metrics, model performance, 
+              and generated examples.
+            </p>
+            <TrainingHistoryComponent userId={userId} />
+          </div>
+        );
+
       default:
         return null;
     }
@@ -354,6 +386,30 @@ export default function SettingsPage({ onNavigate }: SettingsPageProps) {
                 >
                   <Bell className="w-5 h-5" />
                   Notifications
+                </button>
+                <button
+                  onClick={() => setActiveSection('aitraining')}
+                  className={`flex items-center gap-3 px-4 py-3 rounded-lg transition text-left ${
+                    activeSection === 'aitraining'
+                      ? 'bg-purple-50 text-purple-700 font-medium'
+                      : 'text-gray-600 hover:bg-gray-50'
+                  }`}
+                >
+                  <Brain className="w-5 h-5" />
+                  AI Training
+                </button>
+                <button
+                  onClick={() => setActiveSection('traininghistory')}
+                  className={`flex items-center gap-3 px-4 py-3 rounded-lg transition text-left ${
+                    activeSection === 'traininghistory'
+                      ? 'bg-purple-50 text-purple-700 font-medium'
+                      : 'text-gray-600 hover:bg-gray-50'
+                  }`}
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+                  </svg>
+                  Training History
                 </button>
               </nav>
             </div>

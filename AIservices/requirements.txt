@@ -11,3 +11,8 @@ pydantic
 requests
 chromadb
 sentence-transformers
+google-generativeai
+groq
+ollama
+transformers
+torch

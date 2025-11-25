@@ -1,0 +1,12 @@
+{
+  "user_id": "testuser32",
+  "version": "1.0",
+  "training_steps": 1,
+  "style_vectors": {},
+  "preferences": {
+    "mystery": 1
+  },
+  "quality_scores": [
+    7.91
+  ]
+}
