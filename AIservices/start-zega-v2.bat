@@ -5,20 +5,21 @@ echo.
 
 cd /d "%~dp0"
 
-REM Activate virtual environment if it exists
-if exist "venv\Scripts\activate.bat" (
-    call venv\Scripts\activate.bat
-    echo Virtual environment activated.
-) else (
-    echo No virtual environment found. Using system Python.
-)
-
 REM Set ZEGA V2 flag
 set ZEGA_USE_V2=true
 
-REM Start ZEGA API
-echo Starting ZEGA on http://localhost:8002
-echo.
-python -m zega.api
+REM Activate virtual environment and start ZEGA
+if exist "venv\Scripts\activate.bat" (
+    echo Activating virtual environment...
+    call venv\Scripts\activate.bat
+    echo [ZEGA] Starting on port 8002...
+    python -m zega.api
+) else (
+    echo ERROR: Virtual environment not found!
+    echo Please run: python -m venv venv
+    echo Then: venv\Scripts\pip install -r requirements.txt
+    pause
+    exit /b 1
+)
 
 pause

@@ -7,7 +7,7 @@ import {
 } from '../api/trainingHistory.service';
 
 interface TrainingHistoryProps {
-  userId: number;
+  userId: string | number;
 }
 
 const TrainingHistoryComponent: React.FC<TrainingHistoryProps> = ({ userId }) => {
@@ -19,10 +19,11 @@ const TrainingHistoryComponent: React.FC<TrainingHistoryProps> = ({ userId }) =>
   useEffect(() => {
     const loadData = async () => {
       setLoading(true);
+      const userIdNum = typeof userId === 'string' ? parseInt(userId, 10) : userId;
       
       const [historyData, statsData] = await Promise.all([
-        getUserTrainingHistory(userId),
-        getUserTrainingStats(userId)
+        getUserTrainingHistory(userIdNum),
+        getUserTrainingStats(userIdNum)
       ]);
       
       setHistory(historyData);

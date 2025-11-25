@@ -80,7 +80,7 @@ timeout /t 3 /nobreak >nul
 
 REM Start ZEGA Model (8002) with SSE Streaming
 echo [2/2] Starting ZEGA Model (with Real-Time Streaming)...
-start "ZEGA-Model-8002" cmd /k "cd /d "%AISERVICES_DIR%" && call venv\Scripts\activate && echo [ZEGA] Starting on port 8002... && python zega\api.py"
+start "ZEGA-Model-8002" cmd /k "cd /d "%AISERVICES_DIR%" && call venv\Scripts\activate.bat && set ZEGA_USE_V2=true && echo [ZEGA] Starting on port 8002... && python -m zega.api"
 timeout /t 5 /nobreak >nul
 
 REM Start Frontend if enabled

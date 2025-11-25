@@ -41,7 +41,7 @@ class OllamaTeacher:
             if system:
                 payload["system"] = system
             
-            async with httpx.AsyncClient(timeout=120.0) as client:
+            async with httpx.AsyncClient(timeout=8.0) as client:  # 8s timeout - balance between speed and reliability
                 response = await client.post(
                     self.api_url,
                     json=payload
@@ -51,7 +51,7 @@ class OllamaTeacher:
                 return result.get("response", "")
                 
         except httpx.TimeoutException:
-            raise Exception(f"Ollama timeout for {self.model_name}")
+            raise Exception(f"Ollama timeout (3s) for {self.model_name}")
         except httpx.ConnectError:
             raise Exception(f"Cannot connect to Ollama at {self.base_url}. Is Ollama running?")
         except Exception as e:
@@ -60,7 +60,7 @@ class OllamaTeacher:
     async def is_available(self) -> bool:
         """Check if this model is available in Ollama."""
         try:
-            async with httpx.AsyncClient(timeout=5.0) as client:
+            async with httpx.AsyncClient(timeout=2.0) as client:  # Fast check: 2s
                 response = await client.get(f"{self.base_url}/api/tags")
                 if response.status_code == 200:
                     models = response.json().get("models", [])

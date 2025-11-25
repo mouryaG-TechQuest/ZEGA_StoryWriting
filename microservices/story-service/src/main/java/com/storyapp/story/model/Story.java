@@ -13,7 +13,7 @@ public class Story {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false)
+    @Column(nullable = false, length = 500)
     private String title;
 
     @Column(columnDefinition = "TEXT")
@@ -29,10 +29,10 @@ public class Story {
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
 
-    @Column(name = "description", length = 500)
+    @Column(name = "description", columnDefinition = "TEXT")
     private String description;
 
-    @Column(name = "writers", length = 500)
+    @Column(name = "writers", columnDefinition = "TEXT")
     private String writers;
 
     @Lob

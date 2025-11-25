@@ -231,8 +231,6 @@ const AIStoryGenerator: React.FC<AIStoryGeneratorProps> = ({ onStoryGenerated, o
     setProgress('🎲 Generating random story concept...');
 
     try {
-      const sceneConfig = sceneCountMap[storyLength];
-      
       // Generate random story parameters
       const randomConfig = generateRandomPrompt();
       const randomPrompt = randomConfig.prompt;

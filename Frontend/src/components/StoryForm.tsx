@@ -1,8 +1,9 @@
-import { Plus, Trash2, Upload, X, Users, BookOpen, Info, Eye, Filter, SortAsc, ChevronDown, ChevronUp, Search, ChevronLeft, ChevronRight, EyeOff, Film, Edit, Copy, Clipboard, Sparkles } from 'lucide-react';
+import { Plus, Trash2, Upload, X, Users, BookOpen, Info, Eye, Filter, SortAsc, ChevronDown, ChevronUp, Search, ChevronLeft, ChevronRight, EyeOff, Film, Edit, Copy, Clipboard, Sparkles, AlertCircle } from 'lucide-react';
 import { useState, useEffect, type ReactElement } from 'react';
 import TimelineManager from './TimelineManager';
 import { getAllCharacterNames, getCharacterColor } from '../utils/characterColors.tsx';
 import { useAI } from '../hooks/useAI';
+import { FIELD_LIMITS, validateFieldLength } from '../utils/constants';
 
 interface Character {
   id?: string;
@@ -519,19 +520,38 @@ Provide a popularity score (1-10) and brief explanation. Format: {"score": X, "e
 
   const handleTimelineChange = (newTimeline: TimelineEntry[]) => {
     setTimeline(newTimeline);
-    setFormData({ ...formData, timelineJson: JSON.stringify(newTimeline) });
+    setFormData(prev => ({ ...prev, timelineJson: JSON.stringify(newTimeline) }));
     setHasUnsavedChanges(true);
   };
 
   const handleAddCharacterFromTimeline = async (character: Character) => {
-    setFormData({
-      ...formData,
-      characters: [...formData.characters, character]
+    // Update state immediately for new stories or before backend save
+    // Use functional update to avoid race conditions and duplicates
+    setFormData(prev => {
+      // Check for duplicates within the latest state
+      const exists = prev.characters.some(c => 
+        c.name.toLowerCase().trim() === character.name.toLowerCase().trim()
+      );
+      
+      if (exists) {
+        console.log(`Character "${character.name}" already exists (race condition check), skipping add`);
+        return prev;
+      }
+      
+      return {
+        ...prev,
+        characters: [...prev.characters, character]
+      };
     });
-    const newCharacters = [...formData.characters, character];
 
-    // If editing an existing story, save the character immediately
-    if (storyId) {
+    // If editing an existing story, save the character to backend
+    // We perform a closure check to avoid unnecessary network requests, 
+    // but the real duplicate prevention is in the setState above.
+    const existsInClosure = formData.characters.some(c => 
+      c.name.toLowerCase().trim() === character.name.toLowerCase().trim()
+    );
+    
+    if (storyId && !existsInClosure) {
       try {
         const token = localStorage.getItem('token');
         const characterData = { ...character, storyId: parseInt(storyId) };
@@ -547,12 +567,17 @@ Provide a popularity score (1-10) and brief explanation. Format: {"score": X, "e
 
         if (response.ok) {
           const savedCharacter = await response.json();
-          // Update the character list with the saved character (with ID)
-          const finalCharacters = [...newCharacters];
-          finalCharacters[finalCharacters.length - 1] = savedCharacter;
-          
-          const finalFormData = { ...formData, characters: finalCharacters };
-          setFormData(finalFormData);
+          // Update the character list with the saved character (with ID from backend)
+          setFormData(prev => {
+            const updatedChars = [...prev.characters];
+            const index = updatedChars.findIndex(c => 
+              c.name.toLowerCase().trim() === character.name.toLowerCase().trim() && !c.id
+            );
+            if (index !== -1) {
+              updatedChars[index] = savedCharacter;
+            }
+            return { ...prev, characters: updatedChars };
+          });
           
           // Notify parent to refresh
           if (onCharacterCountChange) {
@@ -1134,10 +1159,23 @@ Provide a popularity score (1-10) and brief explanation. Format: {"score": X, "e
                   type="text"
                   placeholder="Story Title *"
                   value={formData.title}
-                  onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                  className="w-full px-4 py-3 border-2 border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-lg font-semibold mb-3 pr-10"
+                  onChange={(e) => {
+                    const newValue = e.target.value;
+                    if (newValue.length <= FIELD_LIMITS.STORY.TITLE) {
+                      setFormData({ ...formData, title: newValue });
+                    }
+                  }}
+                  maxLength={FIELD_LIMITS.STORY.TITLE}
+                  className={`w-full px-4 py-3 border-2 rounded-lg focus:ring-2 focus:ring-blue-500 text-lg font-semibold mb-3 pr-24 ${
+                    formData.title?.length >= FIELD_LIMITS.STORY.TITLE * 0.9
+                      ? 'border-orange-400 bg-orange-50'
+                      : 'border-blue-200'
+                  }`}
                   required
                 />
+                <div className="absolute right-12 top-1/2 -translate-y-1/2 text-xs text-gray-500">
+                  {formData.title?.length || 0}/{FIELD_LIMITS.STORY.TITLE}
+                </div>
                 <button
                   type="button"
                   onClick={() => handleAISuggestion('title')}
@@ -1185,10 +1223,28 @@ Provide a popularity score (1-10) and brief explanation. Format: {"score": X, "e
                 <textarea
                   placeholder="Short Description (displayed in preview)"
                   value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  className="w-full px-4 py-3 border-2 border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  onChange={(e) => {
+                    const newValue = e.target.value;
+                    if (newValue.length <= FIELD_LIMITS.STORY.DESCRIPTION) {
+                      setFormData({ ...formData, description: newValue });
+                    }
+                  }}
+                  maxLength={FIELD_LIMITS.STORY.DESCRIPTION}
+                  className={`w-full px-4 py-3 border-2 rounded-lg focus:ring-2 focus:ring-blue-500 ${
+                    formData.description?.length >= FIELD_LIMITS.STORY.DESCRIPTION * 0.9
+                      ? 'border-orange-400 bg-orange-50'
+                      : 'border-blue-200'
+                  }`}
                   rows={3}
                 />
+                <div className="absolute bottom-2 left-2 text-xs text-gray-500 flex items-center gap-1">
+                  {formData.description?.length >= FIELD_LIMITS.STORY.DESCRIPTION * 0.9 && (
+                    <AlertCircle className="w-3 h-3 text-orange-500" />
+                  )}
+                  <span className={formData.description?.length >= FIELD_LIMITS.STORY.DESCRIPTION * 0.9 ? 'text-orange-600 font-semibold' : ''}>
+                    {formData.description?.length || 0}/{FIELD_LIMITS.STORY.DESCRIPTION}
+                  </span>
+                </div>
                 <button
                   type="button"
                   onClick={() => handleAISuggestion('description')}
@@ -1246,9 +1302,22 @@ Provide a popularity score (1-10) and brief explanation. Format: {"score": X, "e
                     type="text"
                     placeholder="Writers (e.g., John Doe, Jane Smith)"
                     value={formData.writers || ''}
-                    onChange={(e) => setFormData({ ...formData, writers: e.target.value })}
-                    className="w-full px-4 py-3 border-2 border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    onChange={(e) => {
+                      const newValue = e.target.value;
+                      if (newValue.length <= FIELD_LIMITS.STORY.WRITERS) {
+                        setFormData({ ...formData, writers: newValue });
+                      }
+                    }}
+                    maxLength={FIELD_LIMITS.STORY.WRITERS}
+                    className={`w-full px-4 py-3 border-2 rounded-lg focus:ring-2 focus:ring-blue-500 ${
+                      formData.writers?.length >= FIELD_LIMITS.STORY.WRITERS * 0.9
+                        ? 'border-orange-400 bg-orange-50'
+                        : 'border-blue-200'
+                    }`}
                   />
+                  <div className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-500">
+                    {formData.writers?.length || 0}/{FIELD_LIMITS.STORY.WRITERS}
+                  </div>
                 </div>
                 <button
                   type="button"
@@ -1648,10 +1717,19 @@ Provide a popularity score (1-10) and brief explanation. Format: {"score": X, "e
                             type="text"
                             placeholder="Character Name *"
                             value={char.name}
-                            onChange={(e) => updateCharacter(index, 'name', e.target.value)}
+                            onChange={(e) => {
+                              const newValue = e.target.value;
+                              if (newValue.length <= FIELD_LIMITS.CHARACTER.NAME) {
+                                updateCharacter(index, 'name', newValue);
+                              }
+                            }}
+                            maxLength={FIELD_LIMITS.CHARACTER.NAME}
                             className="w-full px-3 py-2 border-2 border-purple-300 rounded-lg focus:ring-2 focus:ring-purple-500 font-semibold text-sm sm:text-base pr-8"
                             required
                           />
+                          <div className="absolute right-10 top-1/2 -translate-y-1/2 text-xs text-gray-400">
+                            {char.name?.length || 0}/{FIELD_LIMITS.CHARACTER.NAME}
+                          </div>
                           <button
                             type="button"
                             onClick={() => handleCharacterAISuggestion(index, 'name')}
@@ -1672,9 +1750,18 @@ Provide a popularity score (1-10) and brief explanation. Format: {"score": X, "e
                             type="text"
                             placeholder="Actor Name (who plays this role)"
                             value={char.actorName || ''}
-                            onChange={(e) => updateCharacter(index, 'actorName', e.target.value)}
+                            onChange={(e) => {
+                              const newValue = e.target.value;
+                              if (newValue.length <= FIELD_LIMITS.CHARACTER.ACTOR_NAME) {
+                                updateCharacter(index, 'actorName', newValue);
+                              }
+                            }}
+                            maxLength={FIELD_LIMITS.CHARACTER.ACTOR_NAME}
                             className="w-full px-3 py-2 border-2 border-purple-300 rounded-lg focus:ring-2 focus:ring-purple-500 text-sm sm:text-base pr-8"
                           />
+                          <div className="absolute right-10 top-1/2 -translate-y-1/2 text-xs text-gray-400">
+                            {char.actorName?.length || 0}/{FIELD_LIMITS.CHARACTER.ACTOR_NAME}
+                          </div>
                           <button
                             type="button"
                             onClick={() => handleCharacterAISuggestion(index, 'actorName')}
@@ -1696,9 +1783,18 @@ Provide a popularity score (1-10) and brief explanation. Format: {"score": X, "e
                               type="text"
                               placeholder="Role (e.g., Protagonist)"
                               value={char.role}
-                              onChange={(e) => updateCharacter(index, 'role', e.target.value)}
+                              onChange={(e) => {
+                                const newValue = e.target.value;
+                                if (newValue.length <= FIELD_LIMITS.CHARACTER.ROLE) {
+                                  updateCharacter(index, 'role', newValue);
+                                }
+                              }}
+                              maxLength={FIELD_LIMITS.CHARACTER.ROLE}
                               className="w-full px-3 py-2 border-2 border-purple-300 rounded-lg focus:ring-2 focus:ring-purple-500 text-sm sm:text-base pr-8"
                             />
+                            <div className="absolute right-10 top-1/2 -translate-y-1/2 text-xs text-gray-400">
+                              {char.role?.length || 0}/{FIELD_LIMITS.CHARACTER.ROLE}
+                            </div>
                             <button
                               type="button"
                               onClick={() => handleCharacterAISuggestion(index, 'role')}
@@ -1749,10 +1845,23 @@ Provide a popularity score (1-10) and brief explanation. Format: {"score": X, "e
                           <textarea
                             placeholder="Character Description"
                             value={char.description}
-                            onChange={(e) => updateCharacter(index, 'description', e.target.value)}
-                            className="w-full px-3 py-2 border-2 border-purple-300 rounded-lg focus:ring-2 focus:ring-purple-500 text-sm sm:text-base"
+                            onChange={(e) => {
+                              const newValue = e.target.value;
+                              if (newValue.length <= FIELD_LIMITS.CHARACTER.DESCRIPTION) {
+                                updateCharacter(index, 'description', newValue);
+                              }
+                            }}
+                            maxLength={FIELD_LIMITS.CHARACTER.DESCRIPTION}
+                            className={`w-full px-3 py-2 pb-6 border-2 rounded-lg focus:ring-2 focus:ring-purple-500 text-sm sm:text-base ${
+                              char.description?.length >= FIELD_LIMITS.CHARACTER.DESCRIPTION * 0.9
+                                ? 'border-orange-400 bg-orange-50'
+                                : 'border-purple-300'
+                            }`}
                             rows={3}
                           />
+                          <div className="absolute bottom-2 left-2 text-xs text-gray-500">
+                            {char.description?.length || 0}/{FIELD_LIMITS.CHARACTER.DESCRIPTION}
+                          </div>
                           <button
                             type="button"
                             onClick={() => handleCharacterAISuggestion(index, 'description')}

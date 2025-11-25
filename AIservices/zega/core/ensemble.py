@@ -9,7 +9,14 @@ from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
 import httpx
 from .ollama_teacher import OllamaTeacher
-import google.generativeai as genai
+
+# Optional: Google Generative AI
+try:
+    import google.generativeai as genai
+    GEMINI_AVAILABLE = True
+except ImportError:
+    GEMINI_AVAILABLE = False
+    print("[ENSEMBLE] Gemini not available (google-generativeai not installed)")
 
 @dataclass
 class ModelResponse:
@@ -31,63 +38,110 @@ class GroqTeacher:
         if not self.api_key:
             raise Exception("GROQ_API_KEY not set")
         
+        # Build messages with proper formatting
         messages = []
         if system:
-            messages.append({"role": "system", "content": system})
-        messages.append({"role": "user", "content": prompt})
+            messages.append({"role": "system", "content": str(system).strip()[:1200]})
+        messages.append({"role": "user", "content": str(prompt).strip()[:3000]})
         
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            response = await client.post(
-                self.base_url,
-                json={
-                    "model": self.model_name,
-                    "messages": messages,
-                    "temperature": 0.8,
-                    "max_tokens": 2048
-                },
-                headers={
-                    "Authorization": f"Bearer {self.api_key}",
-                    "Content-Type": "application/json"
-                }
-            )
-            response.raise_for_status()
-            result = response.json()
-            return result["choices"][0]["message"]["content"]
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            try:
+                response = await client.post(
+                    self.base_url,
+                    json={
+                        "model": self.model_name,
+                        "messages": messages,
+                        "temperature": 0.8,
+                        "max_tokens": 2000,
+                        "top_p": 0.95,
+                        "stream": False
+                    },
+                    headers={
+                        "Authorization": f"Bearer {self.api_key}",
+                        "Content-Type": "application/json"
+                    }
+                )
+                
+                if response.status_code != 200:
+                    error_detail = response.text[:200]
+                    raise Exception(f"Groq API error {response.status_code}: {error_detail}")
+                
+                result = response.json()
+                return result["choices"][0]["message"]["content"]
+            except httpx.TimeoutException:
+                raise Exception(f"Groq timeout for {self.model_name}")
+            except Exception as e:
+                raise Exception(f"Groq error: {str(e)[:150]}")
 
 class HuggingFaceTeacher:
-    """HuggingFace Inference API teacher"""
-    def __init__(self, model_name: str = "meta-llama/Meta-Llama-3-8B-Instruct"):
+    """HuggingFace Serverless Inference API teacher - Free tier with rate limits"""
+    def __init__(self, model_name: str = "mistralai/Mistral-7B-Instruct-v0.2"):
         self.model_name = model_name
         self.api_key = os.getenv("HUGGINGFACEHUB_API_TOKEN")
+        # Using serverless inference API (free but slower)
         self.base_url = f"https://api-inference.huggingface.co/models/{model_name}"
     
     async def generate(self, prompt: str, system: str = None) -> str:
         if not self.api_key:
             raise Exception("HUGGINGFACEHUB_API_TOKEN not set")
         
-        full_prompt = f"{system}\n\n{prompt}" if system else prompt
+        # Format prompt based on model type
+        if "mistral" in self.model_name.lower():
+            # Mistral Instruct format
+            if system:
+                full_prompt = f"<s>[INST] {system}\n\n{prompt} [/INST]"
+            else:
+                full_prompt = f"<s>[INST] {prompt} [/INST]"
+        elif "flan" in self.model_name.lower():
+            # Flan-T5 is simpler - just the task
+            full_prompt = prompt
+        else:
+            # Generic chat format
+            full_prompt = f"System: {system or 'You are helpful.'}\n\nUser: {prompt}\n\nAssistant:"
         
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            response = await client.post(
-                self.base_url,
-                json={
-                    "inputs": full_prompt,
-                    "parameters": {
-                        "max_new_tokens": 2048,
-                        "temperature": 0.8,
-                        "top_p": 0.9,
-                        "return_full_text": False
+        async with httpx.AsyncClient(timeout=60.0) as client:  # Longer timeout for serverless
+            try:
+                response = await client.post(
+                    self.base_url,
+                    json={
+                        "inputs": full_prompt[:3000],
+                        "parameters": {
+                            "max_new_tokens": 512,  # Reduced for faster response
+                            "temperature": 0.7,
+                            "top_p": 0.9,
+                            "return_full_text": False,
+                            "do_sample": True
+                        },
+                        "options": {
+                            "wait_for_model": True,  # Wait if model is loading (cold start)
+                            "use_cache": True
+                        }
+                    },
+                    headers={
+                        "Authorization": f"Bearer {self.api_key}"
                     }
-                },
-                headers={
-                    "Authorization": f"Bearer {self.api_key}"
-                }
-            )
-            response.raise_for_status()
-            result = response.json()
-            
-            if isinstance(result, list) and len(result) > 0:
-                return result[0].get("generated_text", "")
+                )
+                
+                if response.status_code == 503:
+                    raise Exception("HuggingFace model loading (cold start) - try again")
+                elif response.status_code != 200:
+                    raise Exception(f"HF API error {response.status_code}: {response.text[:150]}")
+                
+                result = response.json()
+                
+                # Handle different response formats
+                if isinstance(result, list) and len(result) > 0:
+                    return result[0].get("generated_text", "")
+                elif isinstance(result, dict) and "generated_text" in result:
+                    return result["generated_text"]
+                elif isinstance(result, dict) and "error" in result:
+                    raise Exception(f"HF error: {result['error']}")
+                return str(result)
+            except httpx.TimeoutException:
+                raise Exception(f"HuggingFace timeout (60s) for {self.model_name}")
+            except Exception as e:
+                raise Exception(f"HuggingFace error: {str(e)[:150]}")
+                return result.get("generated_text", result.get("text", str(result)))
             return str(result)
 
 class EnsembleController:
@@ -107,25 +161,29 @@ class EnsembleController:
         """Initialize ALL available teachers"""
         print("[ENSEMBLE] 🎓 Initializing teacher models...")
         
-        # 1. Google Gemini (always available if API key present)
-        if os.getenv("GOOGLE_API_KEY"):
-            genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
-            self.teachers.append({
-                "name": "gemini-2.0-flash",
-                "model": genai.GenerativeModel('gemini-2.0-flash'),
-                "provider": "gemini",
-                "role": "judge",
-                "strength": "quality",
-                "speed": "medium"
-            })
-            print("[ENSEMBLE] ✅ Loaded: Gemini 2.0 Flash")
+        # 1. Google Gemini (optional - only if library installed and API key present)
+        if GEMINI_AVAILABLE and os.getenv("GOOGLE_API_KEY"):
+            try:
+                genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
+                self.teachers.append({
+                    "name": "gemini-2.0-flash",
+                    "model": genai.GenerativeModel('gemini-2.0-flash'),
+                    "provider": "gemini",
+                    "role": "judge",
+                    "strength": "quality",
+                    "speed": "medium"
+                })
+                print("[ENSEMBLE] ✅ Loaded: Gemini 2.0 Flash")
+            except Exception as e:
+                print(f"[ENSEMBLE] ⚠️ Gemini init failed: {e}")
         
-        # 2. Groq (Llama 3.1 70B - very fast)
+        # 2. Groq (Fast cloud inference)
         if os.getenv("GROQ_API_KEY"):
             try:
                 groq_models = [
-                    {"name": "llama-3.1-70b-versatile", "role": "creative", "speed": "fast"},
-                    {"name": "mixtral-8x7b-32768", "role": "reasoning", "speed": "fast"}
+                    {"name": "llama-3.3-70b-versatile", "role": "creative", "speed": "fast"},
+                    {"name": "mixtral-8x7b-32768-instruct-v0.1", "role": "reasoning", "speed": "fast"},
+                    {"name": "llama3-70b-8192", "role": "backup", "speed": "fast"}
                 ]
                 for model_config in groq_models:
                     self.teachers.append({
@@ -140,12 +198,12 @@ class EnsembleController:
             except Exception as e:
                 print(f"[ENSEMBLE] ⚠️ Groq init failed: {e}")
         
-        # 3. HuggingFace (Free inference)
+        # 3. HuggingFace (Free serverless inference - slower but unlimited)
         if os.getenv("HUGGINGFACEHUB_API_TOKEN"):
             try:
                 hf_models = [
-                    {"name": "meta-llama/Meta-Llama-3-8B-Instruct", "role": "creative"},
-                    {"name": "mistralai/Mistral-7B-Instruct-v0.3", "role": "structured"}
+                    {"name": "mistralai/Mistral-7B-Instruct-v0.2", "role": "creative"},
+                    {"name": "google/flan-t5-large", "role": "fast_backup"}
                 ]
                 for model_config in hf_models:
                     self.teachers.append({
@@ -217,12 +275,12 @@ class EnsembleController:
         system_prompt = self._build_system_prompt(mode, style_context)
         user_prompt = f"{prompt}\n\nInstruction: {instruction}" if instruction else prompt
         
-        # Priority order: Local → Fast API → Free API
+        # Priority order: Speed-optimized with complete fallback chain
         priority_groups = [
-            [t for t in self.teachers if t["provider"] == "ollama"],  # Local first
-            [t for t in self.teachers if t["provider"] == "groq"],    # Fast API second
-            [t for t in self.teachers if t["provider"] == "gemini"],  # Google third
-            [t for t in self.teachers if t["provider"] == "huggingface"]  # Free last
+            [t for t in self.teachers if t["provider"] == "gemini"],       # 1. Gemini - fastest (1-2s) but quota limited
+            [t for t in self.teachers if t["provider"] == "groq"],         # 2. Groq - ultra fast (0.5-1s) generous quota
+            [t for t in self.teachers if t["provider"] == "ollama"],       # 3. Ollama - local (2-5s) unlimited but needs install
+            [t for t in self.teachers if t["provider"] == "huggingface"]   # 4. HuggingFace - slowest (10-30s) but free fallback
         ]
         
         valid_responses = []
@@ -246,16 +304,13 @@ class EnsembleController:
                         print(f"[ENSEMBLE] ✅ Success from {teacher['name']}")
                         break  # Stop at first success in group
                     
-                    # Small delay between attempts in same group
-                    await asyncio.sleep(0.5)
-                    
                 except Exception as e:
                     print(f"[ENSEMBLE] ⚠️ {teacher['name']} failed: {str(e)[:100]}")
-                    await asyncio.sleep(1)  # Longer delay after error
+                    # No delay - move to next model immediately
             
-            # Delay between priority groups
+            # Minimal delay between priority groups
             if not valid_responses and group_idx < len(priority_groups) - 1:
-                await asyncio.sleep(2)
+                await asyncio.sleep(0.2)  # Reduced from 2s to 0.2s for faster switching
         
         print(f"[ENSEMBLE] ✅ Got {len(valid_responses)} valid response(s)")
         
@@ -275,7 +330,7 @@ class EnsembleController:
         teacher: Dict,
         system_prompt: str,
         user_prompt: str,
-        max_retries: int = 2
+        max_retries: int = 1  # Reduced from 2 to 1 for faster fallback
     ) -> ModelResponse:
         """Generate with exponential backoff retry"""
         for attempt in range(max_retries):
@@ -283,7 +338,7 @@ class EnsembleController:
                 return await self._generate_from_teacher(teacher, system_prompt, user_prompt)
             except Exception as e:
                 if attempt < max_retries - 1:
-                    wait_time = (2 ** attempt) + random.uniform(0, 1)
+                    wait_time = 0.5 + random.uniform(0, 0.5)  # Much faster: 0.5-1s instead of 2-3s
                     print(f"[ENSEMBLE] 🔄 Retry {attempt + 1}/{max_retries} for {teacher['name']} in {wait_time:.1f}s")
                     await asyncio.sleep(wait_time)
                 else:
@@ -427,7 +482,41 @@ Return ONLY the number (1-{len(responses)}) of the best candidate.
             "character": base + "\n\nCreate detailed, realistic characters.",
             "planning": base + "\n\nYou are a planning expert. Break down tasks logically.",
             "evaluation": base + "\n\nYou are a quality evaluator. Be objective and detailed.",
-            "reflection": base + "\n\nYou are a self-improvement analyst."
+            "reflection": base + "\n\nYou are a self-improvement analyst.",
+            "scene_structured": (
+                "You are ZEGA, a personalized story architect. "
+                "Write a full scene based on the instruction and the provided story context (previous scenes, characters). "
+                "IMPORTANT LENGTH LIMITS: title max 1000 chars, content max 10000 chars, character name max 255 chars, character role max 255 chars, character description max 10000 chars. "
+                "You MUST return ONLY valid JSON with these exact keys: "
+                "'title' (string: scene title, max 1000 characters), "
+                "'content' (string: the scene narrative text, max 10000 characters), "
+                "'new_characters' (array of character objects with keys: name (max 255 chars), role (max 255 chars), description (max 10000 chars), popularity (1-10)). Be extremely thorough in listing ALL new characters introduced in the scene, even minor ones. "
+                "'existing_characters_used' (array of character name strings). "
+                "Example format: {\"title\": \"The Meeting\", \"content\": \"The hero walked...\", \"new_characters\": [{\"name\": \"Alice\", \"role\": \"Mentor\", \"description\": \"Wise sage\", \"popularity\": 7}], \"existing_characters_used\": [\"John\"]}. "
+                "Do NOT include any markdown formatting like ```json, explanations, or extra text. "
+                "Only return the raw JSON object."
+            ),
+            "genre_selection": (
+                "You are ZEGA, an expert literary agent and genre specialist. "
+                "Analyze the provided story context and select the most appropriate genres. "
+                "You MUST return ONLY a valid JSON array of strings, e.g., [\"Fantasy\", \"Adventure\"]. "
+                "Do NOT include any explanations, markdown formatting, or extra text. "
+                "Only return the JSON array."
+            ),
+            "title_ideas": (
+                "You are ZEGA, a creative writing coach. "
+                "Generate exactly 5 creative, catchy, and relevant titles based on the story context. "
+                "IMPORTANT: Each title must be under 500 characters. "
+                "You MUST return ONLY a valid JSON array of strings, e.g., [\"The Last Star\", \"Beyond the Void\", \"Eternal Night\", \"Shadow's Edge\", \"Rising Dawn\"]. "
+                "Do NOT include any explanations, markdown formatting, or extra text. "
+                "Only return the JSON array."
+            ),
+            "description_autocomplete": (
+                base + "\n\nYou are a collaborative writing partner. "
+                "Continue the story description with 2-3 sentences that flow naturally from the existing text. "
+                "IMPORTANT: Keep the total description under 65535 characters (TEXT field limit). "
+                "Do not repeat the input. Just provide the continuation as plain text."
+            )
         }
         
         return mode_prompts.get(mode, base)

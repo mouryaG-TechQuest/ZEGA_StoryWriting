@@ -3,16 +3,7 @@ import react from '@vitejs/plugin-react'
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [
-    react({
-      babel: {
-        plugins: [
-          // Remove console.log in production
-          ['transform-remove-console', { exclude: ['error', 'warn'] }]
-        ]
-      }
-    })
-  ],
+  plugins: [react()],
   server: {
     port: 5173,
     strictPort: true,
@@ -36,8 +27,7 @@ export default defineConfig({
       output: {
         manualChunks: {
           'react-vendor': ['react', 'react-dom', 'react-router-dom'],
-          'ui-vendor': ['lucide-react'],
-          'redux-vendor': ['@reduxjs/toolkit', 'react-redux']
+          'ui-vendor': ['lucide-react']
         },
         // Optimize chunk names
         chunkFileNames: 'assets/js/[name]-[hash].js',
@@ -54,7 +44,7 @@ export default defineConfig({
     assetsInlineLimit: 4096
   },
   optimizeDeps: {
-    include: ['react', 'react-dom', 'lucide-react', '@reduxjs/toolkit'],
+    include: ['react', 'react-dom', 'lucide-react'],
     exclude: []
   }
 })

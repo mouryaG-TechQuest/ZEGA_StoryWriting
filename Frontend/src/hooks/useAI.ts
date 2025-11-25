@@ -20,6 +20,7 @@ interface GenerationResponse {
   content: string;
   title?: string;
   new_characters?: Character[];
+  existing_characters_used?: string[];
 }
 
 export const useAI = () => {
@@ -117,7 +118,8 @@ export const useAI = () => {
           return { 
             content: parsed.content, 
             title: parsed.title,
-            new_characters: parsed.new_characters || [] 
+            new_characters: parsed.new_characters || [],
+            existing_characters_used: parsed.existing_characters_used || []
           } as GenerationResponse;
         } catch (e) {
           console.error("Failed to parse structured AI response", e);

@@ -1,7 +1,8 @@
 import { useState, useMemo, useRef, useEffect, startTransition } from 'react';
-import { Plus, Trash2, Upload, X, ChevronDown, ChevronUp, Users, Image as ImageIcon, Search, Edit2, Check, XCircle, ChevronLeft, ChevronRight, Film, Eye, EyeOff, Video, Music, Copy, Clipboard, Sparkles, Wand2 } from 'lucide-react';
+import { Plus, Trash2, Upload, X, ChevronDown, ChevronUp, Users, Image as ImageIcon, Search, Edit2, Check, XCircle, ChevronLeft, ChevronRight, Film, Eye, EyeOff, Video, Music, Copy, Clipboard, Sparkles, Wand2, AlertCircle } from 'lucide-react';
 import { getCharacterColor, getAllCharacterNames } from '../utils/characterColors.tsx';
 import { useAI } from '../hooks/useAI';
+import { FIELD_LIMITS } from '../utils/constants';
 
 interface Character {
   id?: string;
@@ -96,6 +97,19 @@ const TimelineManager = ({ timeline, onChange, availableCharacters, onAddCharact
   const SCENES_PER_PAGE = scenesPerPage;
   const timelineBarRef = useRef<HTMLDivElement>(null);
   const sceneRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
+
+  // Refs for stale closure fix
+  const timelineRef = useRef(timeline);
+  const availableCharactersRef = useRef(availableCharacters);
+
+  useEffect(() => {
+    timelineRef.current = timeline;
+  }, [timeline]);
+
+  useEffect(() => {
+    availableCharactersRef.current = availableCharacters;
+  }, [availableCharacters]);
+
   const [newCharacter, setNewCharacter] = useState<Character>({
     name: '',
     description: '',
@@ -237,21 +251,25 @@ const TimelineManager = ({ timeline, onChange, availableCharacters, onAddCharact
   }, [timeline, manuallySetActive, activeSceneIndex]);
 
   const addTimelineEntry = () => {
-    const newSceneNumber = timeline.length + 1;
+    const currentTimeline = timelineRef.current;
+    const newSceneNumber = currentTimeline.length + 1;
     const newEntry: TimelineEntry = {
       id: Date.now().toString(),
       event: `Scene ${newSceneNumber}`, // Default title with scene number
       description: '',
       characters: [],
       imageUrls: [],
-      order: timeline.length
+      order: currentTimeline.length
     };
-    onChange([...timeline, newEntry]);
+    onChange([...currentTimeline, newEntry]);
     setExpandedEntries(new Set([...expandedEntries, newEntry.id]));
+    // Auto-set as active scene for immediate AI assistance
+    setLastFocusedSceneId(newEntry.id);
   };
 
   const removeEntry = (id: string) => {
-    onChange(timeline.filter(e => e.id !== id));
+    const currentTimeline = timelineRef.current;
+    onChange(currentTimeline.filter(e => e.id !== id));
     const newExpanded = new Set(expandedEntries);
     newExpanded.delete(id);
     setExpandedEntries(newExpanded);
@@ -262,15 +280,26 @@ const TimelineManager = ({ timeline, onChange, availableCharacters, onAddCharact
     setHiddenScenes(newHidden);
     
     // Reset active scene if it was the deleted one
-    if (timeline.findIndex(e => e.id === id) === activeSceneIndex) {
+    if (currentTimeline.findIndex(e => e.id === id) === activeSceneIndex) {
       setActiveSceneIndex(null);
       setManuallySetActive(false);
     }
   };
 
   const updateEntry = (id: string, field: keyof TimelineEntry, value: string | string[] | number) => {
+    // Enforce field limits
+    let finalValue = value;
+    if (typeof value === 'string') {
+      if (field === 'event' && value.length > FIELD_LIMITS.SCENE.TITLE) {
+        finalValue = value.substring(0, FIELD_LIMITS.SCENE.TITLE);
+      } else if (field === 'description' && value.length > FIELD_LIMITS.SCENE.DESCRIPTION) {
+        finalValue = value.substring(0, FIELD_LIMITS.SCENE.DESCRIPTION);
+      }
+    }
     // Batch update to prevent forced reflows
-    const updatedTimeline = timeline.map(e => e.id === id ? { ...e, [field]: value } : e);
+    // Use ref to avoid stale closures in async callbacks
+    const currentTimeline = timelineRef.current;
+    const updatedTimeline = currentTimeline.map(e => e.id === id ? { ...e, [field]: finalValue } : e);
     onChange(updatedTimeline);
   };
 
@@ -280,6 +309,8 @@ const TimelineManager = ({ timeline, onChange, availableCharacters, onAddCharact
       newExpanded.delete(id);
     } else {
       newExpanded.add(id);
+      // Auto-set this as the active scene for AI assistance
+      setLastFocusedSceneId(id);
     }
     setExpandedEntries(newExpanded);
   };
@@ -289,7 +320,12 @@ const TimelineManager = ({ timeline, onChange, availableCharacters, onAddCharact
   };
 
   const expandAll = () => {
-    setExpandedEntries(new Set(filteredTimeline.map(entry => entry.id)));
+    const allIds = filteredTimeline.map(entry => entry.id);
+    setExpandedEntries(new Set(allIds));
+    // Auto-set first scene as active for AI assistance
+    if (allIds.length > 0) {
+      setLastFocusedSceneId(allIds[0]);
+    }
   };
 
   const moveEntry = (id: string, direction: 'up' | 'down') => {
@@ -781,17 +817,47 @@ const TimelineManager = ({ timeline, onChange, availableCharacters, onAddCharact
     }
   };
 
-  const handleAISceneGeneration = (text: string, newCharacters?: Character[]) => {
-    if (activeEntry) {
-       const entryId = activeEntry.id;
+  const handleAISceneGeneration = (text: string, newCharacters?: Character[], existingCharacters?: string[]) => {
+    // Use refs to get latest state
+    const currentTimeline = timelineRef.current;
+    const currentAvailableCharacters = availableCharactersRef.current;
+
+    // Use activeEntry if available, otherwise use the first expanded entry
+    let targetEntry = activeEntry;
+    if (!targetEntry && expandedEntries.size > 0) {
+      const firstExpandedId = Array.from(expandedEntries)[0];
+      targetEntry = currentTimeline.find(e => e.id === firstExpandedId);
+      if (targetEntry) {
+        setLastFocusedSceneId(targetEntry.id);
+        showToast('Using first expanded scene', 'info');
+      }
+    }
+    
+    if (targetEntry) {
+       const entryId = targetEntry.id;
        
        // Collect all characters to select
        const allCharactersToSelect: string[] = [];
        const mentionedExistingChars: string[] = [];
        const addedNewChars: string[] = [];
        
-       // Step 1: Auto-detect ALL existing characters in the text (comprehensive search)
-       availableCharacters.forEach(char => {
+       // Step 1: Use AI-detected existing characters if available
+       if (existingCharacters && existingCharacters.length > 0) {
+         existingCharacters.forEach(name => {
+           // Verify the character actually exists in our system
+           const exists = currentAvailableCharacters.some(c => c.name.toLowerCase() === name.toLowerCase());
+           if (exists && !allCharactersToSelect.includes(name)) {
+             allCharactersToSelect.push(name);
+             mentionedExistingChars.push(name);
+           }
+         });
+       }
+
+       // Step 1b: Fallback/Supplement with regex detection (in case AI missed some or didn't provide list)
+       currentAvailableCharacters.forEach(char => {
+         // Skip if already selected via AI list
+         if (allCharactersToSelect.includes(char.name)) return;
+
          // Match full name, first name, or character role mentions
          const fullNameRegex = new RegExp(`\\b${char.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
          const firstNameRegex = char.name.includes(' ') 
@@ -815,7 +881,8 @@ const TimelineManager = ({ timeline, onChange, availableCharacters, onAddCharact
        if (newCharacters && newCharacters.length > 0) {
          newCharacters.forEach(char => {
            // Check if character already exists by name (case-insensitive)
-           const exists = availableCharacters.some(c => 
+           // Use ref to check against latest characters
+           const exists = availableCharactersRef.current.some(c => 
              c.name.toLowerCase().trim() === char.name.toLowerCase().trim()
            );
            
@@ -825,8 +892,8 @@ const TimelineManager = ({ timeline, onChange, availableCharacters, onAddCharact
                name: char.name,
                role: char.role || 'Supporting',
                description: char.description || '',
-               actorName: '',
-               popularity: 5,
+               actorName: char.actorName || '',
+               popularity: char.popularity || 5,
                imageUrls: []
              };
              onAddCharacter(newChar);
@@ -843,18 +910,42 @@ const TimelineManager = ({ timeline, onChange, availableCharacters, onAddCharact
        // Step 3: Update description first, then apply character selections
        setTimeout(() => {
          startTransition(() => {
-           updateEntry(entryId, 'description', text);
+           // Get LATEST entry from ref to ensure we append to the most current text
+           const latestEntry = timelineRef.current.find(e => e.id === entryId);
+           const currentDescription = latestEntry?.description || '';
+           
+           const newDescription = currentDescription 
+             ? `${currentDescription}\n\n${text}`
+             : text;
+           
+           updateEntry(entryId, 'description', newDescription);
          });
          
          if (allCharactersToSelect.length > 0) {
+           // Increased delay to allow state propagation of newly added characters
            setTimeout(() => {
-             const entry = timeline.find(e => e.id === entryId);
+             // Use refs inside timeout to get latest state
+             const latestTimeline = timelineRef.current;
+             const latestAvailableCharacters = availableCharactersRef.current;
+
+             const entry = latestTimeline.find(e => e.id === entryId);
              if (entry) {
                // Get current selected characters
                const currentCharacters = [...entry.characters];
                
-               // Add all detected characters that aren't already selected
-               allCharactersToSelect.forEach(charName => {
+               // Filter to only select characters that now exist in availableCharacters
+               // This handles the case where new characters were just added but may not have propagated yet
+               const actuallyAvailableToSelect = allCharactersToSelect.filter(charName => 
+                 latestAvailableCharacters.some(c => c.name === charName)
+               );
+               
+               // Track which new characters haven't appeared yet
+               const missingNewChars = addedNewChars.filter(charName => 
+                 !latestAvailableCharacters.some(c => c.name === charName)
+               );
+               
+               // Add all available characters that aren't already selected
+               actuallyAvailableToSelect.forEach(charName => {
                  if (!currentCharacters.includes(charName)) {
                    currentCharacters.push(charName);
                  }
@@ -869,22 +960,37 @@ const TimelineManager = ({ timeline, onChange, availableCharacters, onAddCharact
                if (mentionedExistingChars.length > 0) {
                  showToast(`Auto-selected existing: ${mentionedExistingChars.join(', ')}`, 'success');
                }
-               if (addedNewChars.length > 0) {
+               if (addedNewChars.length > 0 && missingNewChars.length === 0) {
                  showToast(`Added new characters: ${addedNewChars.join(', ')}`, 'success');
+               } else if (missingNewChars.length > 0) {
+                 // Some characters haven't propagated yet, retry after additional delay
+                 showToast(`Adding new characters: ${addedNewChars.join(', ')}...`, 'info');
+                 setTimeout(() => {
+                   // Use refs again
+                   const retryTimeline = timelineRef.current;
+                   const retryAvailableCharacters = availableCharactersRef.current;
+
+                   const retryEntry = retryTimeline.find(e => e.id === entryId);
+                   if (retryEntry) {
+                     const retryCharacters = [...retryEntry.characters];
+                     missingNewChars.forEach(charName => {
+                       if (retryAvailableCharacters.some(c => c.name === charName) && !retryCharacters.includes(charName)) {
+                         retryCharacters.push(charName);
+                       }
+                     });
+                     if (retryCharacters.length > retryEntry.characters.length) {
+                       startTransition(() => {
+                         updateEntry(entryId, 'characters', retryCharacters);
+                       });
+                       showToast(`New characters now available: ${missingNewChars.join(', ')}`, 'success');
+                     }
+                   }
+                 }, 500);
                }
              }
-           }, 200);
+           }, 500);
          }
-       }, 50);
-       
-       // Send feedback to ZEGA for learning
-       sendFeedback(
-         `Generate scene with instruction`,
-         text,
-         5 // Implicit positive feedback for accepted generation
-       );
-    } else {
-       showToast('Please click inside a scene description box first', 'info');
+       }, 100);
     }
   };
 
@@ -978,45 +1084,64 @@ const TimelineManager = ({ timeline, onChange, availableCharacters, onAddCharact
     try {
       showToast('Generating new scene with AI...', 'info');
       
+      // Use refs for context to ensure we have latest data even if state updates happened
+      const currentTimeline = timelineRef.current;
+      const currentCharacters = availableCharactersRef.current;
+
       // Create a full context for generation including all scenes and characters
       const fullContext = {
         story_title: storyTitle,
         story_description: storyDescription,
         genre: storyGenre,
         current_scene_text: '', // We are generating a new scene
-        previous_scene_text: timeline.length > 0 ? timeline[timeline.length - 1].description : '',
-        all_previous_scenes_summary: timeline.map(e => e.description || e.event).filter(t => t.length > 0),
-        characters: availableCharacters // Pass ALL characters so AI knows who exists
+        previous_scene_text: currentTimeline.length > 0 ? currentTimeline[currentTimeline.length - 1].description : '',
+        all_previous_scenes_summary: currentTimeline.map(e => e.description || e.event).filter(t => t.length > 0),
+        characters: currentCharacters // Pass ALL characters so AI knows who exists
       };
 
       const response = await generateScene(fullContext, "Create a new scene that fits the story flow. Include a title and any new characters if needed. If you introduce a new character, provide their full details.", true);
       
       if (response) {
-        const { title, content, new_characters } = response;
+        const { title, content, new_characters, existing_characters_used } = response;
         
+        // Get latest state again before updating
+        const latestCharacters = availableCharactersRef.current;
+        const latestTimeline = timelineRef.current;
+
         // Add new characters if any
         if (new_characters && new_characters.length > 0) {
           new_characters.forEach(char => {
-             if (!availableCharacters.some(c => c.name === char.name)) {
+             if (!latestCharacters.some(c => c.name === char.name)) {
                onAddCharacter(char);
                showToast(`New character "${char.name}" added!`);
              }
           });
         }
 
+        // Combine new and existing characters for the scene
+        const validExistingChars = (existing_characters_used || []).filter(name => 
+           latestCharacters.some(c => c.name.toLowerCase() === name.toLowerCase())
+        );
+        
+        const sceneCharacters = [
+           ...(new_characters ? new_characters.map(c => c.name) : []),
+           ...validExistingChars
+        ];
+        const uniqueSceneCharacters = [...new Set(sceneCharacters)];
+
         // Create new scene entry
         const newEntry: TimelineEntry = {
           id: Date.now().toString(),
-          event: title || `Scene ${timeline.length + 1}`,
+          event: title || `Scene ${latestTimeline.length + 1}`,
           description: content || '',
-          characters: new_characters ? new_characters.map(c => c.name) : [],
-          order: timeline.length,
+          characters: uniqueSceneCharacters,
+          order: latestTimeline.length,
           imageUrls: [],
           videoUrls: [],
           audioUrls: []
         };
 
-        onChange([...timeline, newEntry]);
+        onChange([...latestTimeline, newEntry]);
         setExpandedEntries(new Set([...expandedEntries, newEntry.id]));
         showToast('New scene generated successfully!');
         
@@ -1288,7 +1413,7 @@ const TimelineManager = ({ timeline, onChange, availableCharacters, onAddCharact
                           title="Click to edit scene number"
                         >
                           <span className="group-hover:hidden">{actualIndex + 1}</span>
-                          <Edit2 className="w-3 h-3 sm:w-3.5 sm:h-3.5 hidden group-hover:block" />
+                          <Edit2 className="w-3 h-3 absolute opacity-0 group-hover:opacity-100 transition" />
                         </button>
                       )}
                       
@@ -1890,14 +2015,25 @@ const TimelineManager = ({ timeline, onChange, availableCharacters, onAddCharact
                         <Edit2 className="w-3 h-3 absolute opacity-0 group-hover:opacity-100 transition" />
                       </button>
                     )}
-                    <div className="relative flex-1">
+                    <div className="relative flex-1 group">
                       <input
                         type="text"
                         placeholder="Event Title (e.g., Opening Scene)"
                         value={entry.event}
-                        onChange={(e) => updateEntry(entry.id, 'event', e.target.value)}
-                        className="w-full px-3 py-1 border border-transparent hover:border-gray-300 focus:border-purple-500 bg-transparent hover:bg-white/50 font-semibold text-gray-800 focus:outline-none focus:ring-2 focus:ring-purple-500 rounded transition-all pr-8"
+                        onChange={(e) => {
+                          // maxLength attribute handles manual input limits
+                          updateEntry(entry.id, 'event', e.target.value);
+                        }}
+                        maxLength={FIELD_LIMITS.SCENE.TITLE}
+                        className={`w-full px-3 py-1 border hover:border-gray-300 focus:border-purple-500 bg-transparent hover:bg-white/50 font-semibold text-gray-800 focus:outline-none focus:ring-2 focus:ring-purple-500 rounded transition-all pr-24 ${
+                          entry.event.length >= FIELD_LIMITS.SCENE.TITLE * 0.9
+                            ? 'border-orange-400 bg-orange-50'
+                            : 'border-transparent'
+                        }`}
                       />
+                      <div className="absolute right-10 top-1/2 -translate-y-1/2 text-[10px] text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity">
+                        {entry.event.length}/{FIELD_LIMITS.SCENE.TITLE}
+                      </div>
                       <button
                         type="button"
                         onClick={() => handleAISceneTitleSuggestion(entry.id)}
@@ -1989,7 +2125,11 @@ const TimelineManager = ({ timeline, onChange, availableCharacters, onAddCharact
                             : "First select characters for this scene, then describe what happens..."
                         }
                         value={entry.description}
-                        onChange={(e) => handleDescriptionChange(entry.id, e.target.value)}
+                        onChange={(e) => {
+                          // maxLength attribute handles manual input limits
+                          // This allows AI-generated content to update properly
+                          handleDescriptionChange(entry.id, e.target.value);
+                        }}
                         onKeyDown={(e) => {
                           if (e.key === 'Tab' && realTimeSuggestion && activeEntry?.id === entry.id) {
                             e.preventDefault();
@@ -1997,8 +2137,21 @@ const TimelineManager = ({ timeline, onChange, availableCharacters, onAddCharact
                           }
                         }}
                         onFocus={() => setLastFocusedSceneId(entry.id)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-purple-500 h-24 text-sm leading-relaxed"
+                        maxLength={FIELD_LIMITS.SCENE.DESCRIPTION}
+                        className={`w-full px-3 py-2 border rounded focus:ring-2 focus:ring-purple-500 h-24 text-sm leading-relaxed pb-8 ${
+                          entry.description.length >= FIELD_LIMITS.SCENE.DESCRIPTION * 0.9
+                            ? 'border-orange-400 bg-orange-50'
+                            : 'border-gray-300'
+                        }`}
                       />
+                      <div className="absolute bottom-2 left-2 text-xs text-gray-500 flex items-center gap-1 pointer-events-none z-10">
+                        {entry.description.length >= FIELD_LIMITS.SCENE.DESCRIPTION * 0.9 && (
+                          <AlertCircle className="w-3 h-3 text-orange-500" />
+                        )}
+                        <span className={entry.description.length >= FIELD_LIMITS.SCENE.DESCRIPTION * 0.9 ? 'text-orange-600 font-semibold' : ''}>
+                          {entry.description.length}/{FIELD_LIMITS.SCENE.DESCRIPTION}
+                        </span>
+                      </div>
                       
                       {/* Real-time Suggestion Bubble */}
                       {activeEntry?.id === entry.id && (realTimeSuggestion || isTyping) && (
@@ -2042,7 +2195,7 @@ const TimelineManager = ({ timeline, onChange, availableCharacters, onAddCharact
                       )}
                     </div>
                   </div>
-
+                  
                   {/* Characters Selection */}
                   <div className="space-y-3">
                     <div className="flex items-center justify-between">

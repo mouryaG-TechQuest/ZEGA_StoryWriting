@@ -1,4 +1,4 @@
-import httpClient from './httpClient';
+import httpClient from './httpClient.js';
 
 const STORY_SERVICE_URL = 'http://localhost:8082/api';
 

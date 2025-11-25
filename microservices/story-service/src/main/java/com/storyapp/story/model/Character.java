@@ -19,19 +19,19 @@ public class Character {
     private Long id;
 
     @NotBlank
-    @Column(nullable = false)
+    @Column(nullable = false, length = 255)
     private String name;
 
-    @Size(max = 10_000) // safeguard extremely large descriptions
+    @Size(max = 65535) // TEXT field limit
     @Column(columnDefinition = "TEXT")
     private String description;
 
     @Size(max = 255)
-    @Column
+    @Column(length = 255)
     private String role;
 
     @Size(max = 255)
-    @Column(name = "actor_name")
+    @Column(name = "actor_name", length = 255)
     private String actorName;
 
     @Min(1)

@@ -29,12 +29,12 @@ export default function SettingsPage({ onNavigate }: SettingsPageProps) {
     phoneNumber: ''
   });
 
-  const [userId, setUserId] = useState('');
+  const [userId, setUserId] = useState<string>('1');
 
   useEffect(() => {
     // Load user data from local storage or API
     const storedUsername = localStorage.getItem('username') || '';
-    const storedUserId = localStorage.getItem('userId') || storedUsername || 'demo_user';
+    const storedUserId = localStorage.getItem('userId') || '1';
     setUserId(storedUserId);
     // In a real app, fetch this from API
     setProfileData(prev => ({ ...prev, username: storedUsername }));

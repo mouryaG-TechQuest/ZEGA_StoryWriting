@@ -4,9 +4,16 @@ import json
 import time
 from pathlib import Path
 from typing import List, Dict, Any, Optional
-import google.generativeai as genai
+
+# Optional: Google Generative AI (fallback to other models if not available)
+try:
+    import google.generativeai as genai
+    GEMINI_AVAILABLE = True
+except ImportError:
+    GEMINI_AVAILABLE = False
+    print("[WARN] google-generativeai not installed. Install with: pip install google-generativeai")
+
 from .memory import ZegaMemory
-from .ollama_teacher import OllamaTeacher
 from .ollama_teacher import OllamaTeacher
 
 class ZegaModel:
@@ -46,18 +53,22 @@ class ZegaModel:
 
     def _init_teachers(self):
         """Initialize available teacher models based on env vars."""
-        # Configure Google Gemini (Primary/Judge)
-        api_key = os.getenv("GOOGLE_API_KEY")
-        if api_key:
-            genai.configure(api_key=api_key)
-            self.teachers.append({
-                "name": "gemini-2.0-flash",
-                "model": genai.GenerativeModel('gemini-2.0-flash'),
-                "role": "judge",
-                "type": "gemini"
-            })
+        # Configure Google Gemini (Primary/Judge) - OPTIONAL
+        if GEMINI_AVAILABLE:
+            api_key = os.getenv("GOOGLE_API_KEY")
+            if api_key:
+                genai.configure(api_key=api_key)
+                self.teachers.append({
+                    "name": "gemini-2.0-flash",
+                    "model": genai.GenerativeModel('gemini-2.0-flash'),
+                    "role": "judge",
+                    "type": "gemini"
+                })
+                print("[INFO] ✅ Loaded: Gemini 2.0 Flash")
+            else:
+                print("[WARN] GOOGLE_API_KEY not found. Gemini will not be used.")
         else:
-            print("[WARN] GOOGLE_API_KEY not found. AI will not function.")
+            print("[INFO] Gemini not available. Using alternative models.")
         
         # Initialize Ollama models (Local)
         self._init_ollama_teachers()
@@ -160,9 +171,11 @@ class ZegaModel:
                 system_prompt = (
                     "You are ZEGA, a personalized story architect. "
                     "Write a full scene based on the instruction and the provided story context (previous scenes, characters). "
+                    "IMPORTANT LENGTH LIMITS: title max 1000 chars, content max 10000 chars, "
+                    "character name max 255 chars, character role max 255 chars, character description max 10000 chars. "
                     "You MUST return the result in valid JSON format with the following keys: "
-                    "'title' (string), 'content' (string), 'new_characters' (list of objects), and 'existing_characters_used' (list of strings). "
-                    "For 'new_characters', each object must have: 'name', 'role', 'description', 'popularity' (1-10). "
+                    "'title' (string, max 1000 characters), 'content' (string, max 10000 characters), 'new_characters' (list of objects), and 'existing_characters_used' (list of strings). "
+                    "For 'new_characters', each object must have: 'name' (max 255 chars), 'role' (max 255 chars), 'description' (max 10000 chars), 'popularity' (1-10). "
                     "For 'existing_characters_used', list the names of any existing characters that appear in this scene. "
                     "If you introduce a new character, you MUST generate a full profile for them, including a name (invent a fitting name if none is provided). "
                     "If no new characters are introduced, 'new_characters' should be an empty list. "
@@ -191,6 +204,7 @@ class ZegaModel:
                 system_prompt = (
                     "You are ZEGA, a creative writing coach. "
                     "Generate a list of 5 creative, catchy, and relevant titles for the story based on the provided context. "
+                    "IMPORTANT: Each title must be under 500 characters. "
                     "You MUST return the result as a valid JSON list of strings, e.g., [\"The Last Star\", \"Beyond the Void\", ...]. "
                     "Do not include any markdown formatting."
                 )
@@ -203,6 +217,7 @@ class ZegaModel:
                 system_prompt = (
                     "You are ZEGA, a collaborative writing partner. "
                     "Your goal is to suggest the next few sentences or a short paragraph to complete the current thought in the story description. "
+                    "IMPORTANT: Keep the total description under 65535 characters (TEXT field limit). "
                     "Use the story title, characters, and any existing scenes as context. "
                     "Do not repeat the input text. Just provide the continuation."
                 )

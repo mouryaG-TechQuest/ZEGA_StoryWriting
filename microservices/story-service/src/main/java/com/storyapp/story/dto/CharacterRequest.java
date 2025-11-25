@@ -1,14 +1,30 @@
 package com.storyapp.story.dto;
 
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 import java.util.ArrayList;
 import java.util.List;
 
 public class CharacterRequest {
+    @NotBlank(message = "Character name is required")
+    @Size(max = 255, message = "Character name cannot exceed 255 characters")
     private String name;
+    
+    @Size(max = 65535, message = "Character description cannot exceed 65535 characters")
     private String description;
+    
+    @Size(max = 255, message = "Character role cannot exceed 255 characters")
     private String role;
+    
+    @Size(max = 255, message = "Actor name cannot exceed 255 characters")
     private String actorName;
+    
+    @Min(value = 1, message = "Popularity must be between 1 and 10")
+    @Max(value = 10, message = "Popularity must be between 1 and 10")
     private Integer popularity;
+    
     private List<String> imageUrls = new ArrayList<>();
 
     public String getName() { return name; }

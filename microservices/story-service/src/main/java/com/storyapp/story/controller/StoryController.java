@@ -7,6 +7,7 @@ import com.storyapp.story.dto.CommentResponse;
 import com.storyapp.story.dto.GenreResponse;
 import com.storyapp.story.service.StoryService;
 import com.storyapp.story.service.ImageStorageService;
+import jakarta.validation.Valid;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -33,7 +34,7 @@ public class StoryController {
     }
 
     @PostMapping
-    public ResponseEntity<StoryResponse> createStory(@RequestBody StoryRequest request, Authentication auth) {
+    public ResponseEntity<StoryResponse> createStory(@Valid @RequestBody StoryRequest request, Authentication auth) {
         String authorUsername = auth.getName();
         StoryResponse response = storyService.createStory(request, authorUsername);
         return ResponseEntity.created(URI.create("/api/stories/" + response.getId())).body(response);
@@ -69,7 +70,7 @@ public class StoryController {
     }
 
     @PutMapping("/{id}")
-    public ResponseEntity<StoryResponse> updateStory(@PathVariable Long id, @RequestBody StoryRequest request, Authentication auth) {
+    public ResponseEntity<StoryResponse> updateStory(@PathVariable Long id, @Valid @RequestBody StoryRequest request, Authentication auth) {
         String authorUsername = auth.getName();
         StoryResponse updated = storyService.updateStory(id, request, authorUsername);
         return ResponseEntity.ok(updated);

@@ -6,6 +6,8 @@ interface Character {
   name: string;
   role: string;
   description: string;
+  popularity?: number;
+  actorName?: string;
 }
 
 interface AIAssistantProps {
@@ -19,13 +21,13 @@ interface AIAssistantProps {
     genre?: string;
   };
   onSuggestionAccepted: (text: string) => void;
-  onSceneGenerated: (text: string, newCharacters?: Character[]) => void;
+  onSceneGenerated: (text: string, newCharacters?: Character[], existingCharacters?: string[]) => void;
 }
 
 const AIAssistant = ({ context, onSuggestionAccepted, onSceneGenerated }: AIAssistantProps) => {
   const { loading, getSuggestion, generateScene, sendFeedback } = useAI();
   const [suggestion, setSuggestion] = useState<string | null>(null);
-  const [generatedScene, setGeneratedScene] = useState<{ content: string, new_characters?: Character[] } | null>(null);
+  const [generatedScene, setGeneratedScene] = useState<{ content: string, new_characters?: Character[], existing_characters_used?: string[] } | null>(null);
   const [instruction, setInstruction] = useState('');
   const [mode, setMode] = useState<'suggest' | 'generate'>('suggest');
   const [isOpen, setIsOpen] = useState(false);
@@ -67,7 +69,7 @@ const AIAssistant = ({ context, onSuggestionAccepted, onSceneGenerated }: AIAssi
 
   const handleAcceptScene = () => {
     if (generatedScene) {
-      onSceneGenerated(generatedScene.content, generatedScene.new_characters);
+      onSceneGenerated(generatedScene.content, generatedScene.new_characters, generatedScene.existing_characters_used);
       const rating = feedbackRating > 0 ? feedbackRating : 5;
       sendFeedback(
         `Generate scene: ${instruction}`, 
@@ -257,7 +259,15 @@ const AIAssistant = ({ context, onSuggestionAccepted, onSceneGenerated }: AIAssi
                     <p className="text-xs font-bold text-green-800 mb-1">New Characters Detected:</p>
                     <ul className="text-xs text-green-700 list-disc list-inside">
                       {generatedScene.new_characters.map((c, i) => (
-                        <li key={i}>{c.name} ({c.role})</li>
+                        <li key={i}>
+                          <span className="font-semibold">{c.name}</span> 
+                          <span className="text-green-600"> ({c.role})</span>
+                          {c.popularity && (
+                            <span className="ml-1 text-amber-600 bg-amber-50 px-1 rounded text-[10px] border border-amber-100">
+                              ★ {c.popularity}
+                            </span>
+                          )}
+                        </li>
                       ))}
                     </ul>
                   </div>

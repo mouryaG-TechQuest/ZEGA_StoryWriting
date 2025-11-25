@@ -1,15 +1,30 @@
 package com.storyapp.story.dto;
 
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 import java.util.List;
 
 public class StoryRequest {
+    @NotBlank(message = "Title is required")
+    @Size(max = 500, message = "Title cannot exceed 500 characters")
     private String title;
+    
+    @Size(max = 65535, message = "Content cannot exceed 65535 characters")
     private String content;
+    
+    @Size(max = 65535, message = "Description cannot exceed 65535 characters")
     private String description;
+    
+    @Size(max = 65535, message = "Writers cannot exceed 65535 characters")
     private String writers;
+    
     private String timelineJson;
     private List<String> imageUrls;
+    
+    @Valid
     private List<CharacterRequest> characters;
+    
     private Boolean isPublished;
     private List<Long> genreIds;
     private Boolean showSceneTimeline;
