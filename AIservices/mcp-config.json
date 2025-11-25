@@ -1,0 +1,25 @@
+{
+  "mcpServers": {
+    "zega-story-ai": {
+      "command": "python",
+      "args": ["-m", "uvicorn", "mcp_server.server:app", "--port", "8006"],
+      "cwd": "${workspaceFolder}/AIservices",
+      "env": {
+        "ZEGA_CORE_URL": "http://localhost:8002",
+        "ZEGA_IMAGE_URL": "http://localhost:8003",
+        "ZEGA_VOICE_URL": "http://localhost:8004",
+        "ZEGA_DOCPARSER_URL": "http://localhost:8005"
+      }
+    }
+  },
+  "servers": {
+    "zega-mcp": {
+      "url": "http://localhost:8006/mcp",
+      "transport": "http",
+      "capabilities": {
+        "tools": true,
+        "resources": true
+      }
+    }
+  }
+}

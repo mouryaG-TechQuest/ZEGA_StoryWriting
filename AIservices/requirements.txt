@@ -1,18 +1,50 @@
+# Core FastAPI
 fastapi
-uvicorn
+uvicorn[standard]
+python-dotenv
+pydantic
+requests
+aiohttp
+python-multipart
+
+# LangChain & AI
 langchain
 langchain-core
 langchain-community
 langchain-google-genai
 langchain-groq
 huggingface_hub
-python-dotenv
-pydantic
-requests
-chromadb
-sentence-transformers
 google-generativeai
 groq
 ollama
 transformers
 torch
+
+# Vector Store
+chromadb
+sentence-transformers
+
+# Image Generation
+Pillow
+replicate
+
+# Voice Processing - TTS
+edge-tts
+gTTS
+
+# Voice Processing - STT
+openai-whisper
+soundfile
+librosa
+
+# Document Parsing
+PyPDF2
+pdfplumber
+python-docx
+striprtf
+ebooklib
+beautifulsoup4
+lxml
+
+# MCP & Utilities
+aiofiles
