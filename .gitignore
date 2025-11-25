@@ -67,3 +67,19 @@ microservices/story-service/uploads/
 *.tmp
 *.temp
 .cache/
+
+
+# Production logs and optimization
+logs/
+*.log
+zega_errors.log
+
+# Build artifacts to clean
+*.jar.original
+microservices/**/target/maven-status/
+microservices/**/target/classes/
+
+# Frontend build
+Frontend/dist/
+Frontend/.vite/
+

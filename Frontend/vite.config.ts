@@ -3,7 +3,16 @@ import react from '@vitejs/plugin-react'
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react()],
+  plugins: [
+    react({
+      babel: {
+        plugins: [
+          // Remove console.log in production
+          ['transform-remove-console', { exclude: ['error', 'warn'] }]
+        ]
+      }
+    })
+  ],
   server: {
     port: 5173,
     strictPort: true,
@@ -19,25 +28,33 @@ export default defineConfig({
     }
   },
   build: {
-    // Enable rollup optimizations
+    // Production optimizations
     minify: 'esbuild',
-    // Chunk splitting strategy
+    target: 'esnext',
+    // Advanced chunk splitting for better caching
     rollupOptions: {
       output: {
         manualChunks: {
-          'react-vendor': ['react', 'react-dom'],
-          'lucide': ['lucide-react']
-        }
+          'react-vendor': ['react', 'react-dom', 'react-router-dom'],
+          'ui-vendor': ['lucide-react'],
+          'redux-vendor': ['@reduxjs/toolkit', 'react-redux']
+        },
+        // Optimize chunk names
+        chunkFileNames: 'assets/js/[name]-[hash].js',
+        entryFileNames: 'assets/js/[name]-[hash].js',
+        assetFileNames: 'assets/[ext]/[name]-[hash].[ext]'
       }
     },
-    // Enable source maps for debugging (disable in production if needed)
     sourcemap: false,
-    // Optimize chunk size
     chunkSizeWarningLimit: 1000,
-    // Enable CSS code splitting
-    cssCodeSplit: true
+    cssCodeSplit: true,
+    // Enable compression
+    reportCompressedSize: true,
+    // Optimize asset inline threshold
+    assetsInlineLimit: 4096
   },
   optimizeDeps: {
-    include: ['react', 'react-dom', 'lucide-react']
+    include: ['react', 'react-dom', 'lucide-react', '@reduxjs/toolkit'],
+    exclude: []
   }
 })
